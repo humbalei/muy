@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TEAM - Admin</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="css/style.css?v=5">
+</head>
+<body>
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div class="logo">TEAM</div>
+    <div class="topbar-right">
+      <span class="topbar-user">Admin: <strong id="userName">-</strong></span>
+      <a href="#" class="logout-link" onclick="logout()">Logout</a>
+    </div>
+  </div>
+
+  <!-- NAVIGATION -->
+  <div class="main-nav">
+    <a class="nav-link active" data-s="daily">Daily</a>
+    <a class="nav-link" data-s="ai">AI Chats</a>
+    <a class="nav-link" data-s="outreach">Outreach</a>
+    <a class="nav-link" data-s="models">Models</a>
+    <a class="nav-link" data-s="content">Content</a>
+    <a class="nav-link" data-s="posting">Posting</a>
+    <a class="nav-link" data-s="settings">Settings</a>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content">
+
+    <!-- ==================== DAILY ==================== -->
+    <div id="daily" class="section active">
+      <div class="section-title">
+        <span>Work Calendar</span>
+      </div>
+
+      <div class="tabs">
+        <div class="tab active" data-t="t-calendar">Calendar</div>
+        <div class="tab" data-t="t-day">Day Detail</div>
+        <div class="tab" data-t="t-payroll">Payroll</div>
+      </div>
+
+      <!-- Calendar Tab -->
+      <div id="t-calendar" class="tab-content active">
+        <div class="grid grid-2">
+          <div class="box">
+            <div class="box-header">
+              <button class="btn btn-sm" onclick="chgMonth(-1)">&lt;</button>
+              <span id="calendarMonth">January 2024</span>
+              <button class="btn btn-sm" onclick="chgMonth(1)">&gt;</button>
+            </div>
+            <div class="box-body">
+              <div class="calendar-legend" style="display:flex;gap:15px;margin-bottom:10px;font-size:10px">
+                <span><span style="display:inline-block;width:12px;height:12px;background:#1a1a00;border:1px solid #ff0;margin-right:3px"></span> Planned</span>
+                <span><span style="display:inline-block;width:12px;height:12px;background:#001a00;border:1px solid #0f0;margin-right:3px"></span> Completed</span>
+                <span><span style="display:inline-block;width:12px;height:12px;background:#1a0a0a;border:1px solid #f55;margin-right:3px"></span> Day Off</span>
+              </div>
+              <div class="calendar-header">
+                <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+              </div>
+              <div class="calendar-grid" id="calendarGrid"></div>
+            </div>
+          </div>
+          <div class="box">
+            <div class="box-header">Month Summary</div>
+            <div class="box-body">
+              <div class="grid grid-2" style="margin-bottom:15px">
+                <div class="stat-box">
+                  <div class="stat-value" id="monthHours">0h</div>
+                  <div class="stat-label">Hours Worked</div>
+                </div>
+                <div class="stat-box">
+                  <div class="stat-value" id="monthEarned">$0</div>
+                  <div class="stat-label">Earned</div>
+                </div>
+              </div>
+              <div class="grid grid-2">
+                <div class="stat-box">
+                  <div class="stat-value" id="monthDays">0</div>
+                  <div class="stat-label">Days Worked</div>
+                </div>
+                <div class="stat-box">
+                  <div class="stat-value" id="monthTasks">0%</div>
+                  <div class="stat-label">Tasks Done</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="box" style="margin-top:15px">
+          <div class="box-header">Work History <button class="btn btn-sm btn-primary" onclick="planNextWeek()">Plan Next 7 Days</button></div>
+          <div class="box-body" id="dailyHistory" style="max-height:300px;overflow-y:auto"></div>
+        </div>
+      </div>
+
+      <!-- Day Detail Tab -->
+      <div id="t-day" class="tab-content">
+        <div class="box" style="margin-bottom:15px">
+          <div class="box-header">
+            <div style="display:flex;align-items:center;gap:10px">
+              <button class="btn btn-sm" onclick="chgDate(-1)">&lt;</button>
+              <input type="date" id="curDate" onchange="loadDayDetail()" style="background:#111;border:1px solid #333;color:#0f0;padding:5px">
+              <button class="btn btn-sm" onclick="chgDate(1)">&gt;</button>
+              <button class="btn btn-sm" onclick="goToday()">Today</button>
+            </div>
+            <div id="dayStatus"></div>
+          </div>
+          <div class="box-body">
+            <div class="grid grid-3" style="margin-bottom:15px">
+              <button class="btn" id="btnPlanned" onclick="setDayStatus('planned')">📅 Plan Work</button>
+              <button class="btn" id="btnDayOff" onclick="setDayStatus('dayoff')">🏖️ Day Off</button>
+              <button class="btn btn-primary" id="btnComplete" onclick="setDayStatus('completed')">✓ Mark Complete</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-2">
+          <!-- Tasks -->
+          <div class="box">
+            <div class="box-header">
+              <span>Tasks</span>
+              <span id="taskProg" style="font-size:11px;color:#999">0/0</span>
+            </div>
+            <div class="box-body" id="taskList" style="max-height:250px;overflow-y:auto">
+              <div class="empty-state">No tasks</div>
+            </div>
+          </div>
+
+          <!-- Daily Report -->
+          <div class="box">
+            <div class="box-header">Daily Report</div>
+            <div class="box-body">
+              <div class="form-group">
+                <label class="form-label">Hours Worked:</label>
+                <input type="number" class="form-input" id="dayHours" step="0.5" min="0" max="24" placeholder="e.g. 8" style="width:100px">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Report:</label>
+                <textarea class="form-textarea" id="reportTxt" style="min-height:100px" placeholder="What did you accomplish today?"></textarea>
+              </div>
+              <button class="btn btn-primary" onclick="saveDayReport()">Save Report</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Day Earnings -->
+        <div class="box" style="margin-top:15px">
+          <div class="box-header">Day Earnings</div>
+          <div class="box-body">
+            <div class="grid grid-4">
+              <div class="stat-box">
+                <div class="stat-value" id="dayHoursDisplay">0h</div>
+                <div class="stat-label">Hours</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-value" id="dayRate">$0</div>
+                <div class="stat-label">Rate/hour</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-value" id="dayBonusDisplay">$0</div>
+                <div class="stat-label">Bonus</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-value" id="dayTotal">$0</div>
+                <div class="stat-label">Total</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Payroll Tab -->
+      <div id="t-payroll" class="tab-content">
+        <div class="box">
+          <div class="box-header">My Wallets <button class="btn btn-sm btn-primary" onclick="modal('wallet')">Add Wallet</button></div>
+          <div class="box-body" id="walletList"></div>
+        </div>
+
+        <div class="box" style="margin-top:15px">
+          <div class="box-header">
+            <span>Pending Payments</span>
+            <span style="font-size:11px;color:#ff0" id="pendingTotal">$0</span>
+          </div>
+          <div class="box-body" id="payrollPending"></div>
+        </div>
+
+        <div class="box" style="margin-top:15px">
+          <div class="box-header">
+            <span>Payment History</span>
+            <span style="font-size:11px;color:#0f0" id="paidTotal">$0 paid</span>
+          </div>
+          <div class="box-body" id="payrollHistory" style="max-height:300px;overflow-y:auto"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== AI CHAT ==================== -->
+    <div id="ai" class="section">
+      <div class="section-title">
+        <span>AI Expert Assistant</span>
+        <span class="status status-healthy">Online</span>
+      </div>
+
+      <div class="tabs">
+        <div class="tab active" data-t="ai-chat">Chat</div>
+        <div class="tab" data-t="ai-kb">Knowledge Base</div>
+      </div>
+
+      <!-- Chat Tab -->
+      <div id="ai-chat" class="tab-content active">
+        <div class="chat-container" style="height:500px">
+          <div class="chat-messages" id="chatMsgs">
+            <div class="chat-msg ai">
+              <div class="chat-msg-bubble">Hi! I'm your AI Expert Assistant. Ask me anything!</div>
+            </div>
+          </div>
+          <div class="chat-input-area">
+            <textarea class="form-textarea" id="chatIn" placeholder="Ask anything..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg()}"></textarea>
+            <button class="btn btn-primary" id="sendBtn" onclick="sendMsg()">Send</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Knowledge Base Tab -->
+      <div id="ai-kb" class="tab-content">
+        <div class="grid grid-2">
+          <div class="box">
+            <div class="box-header">Add to Knowledge Base</div>
+            <div class="box-body">
+              <div class="form-group">
+                <label class="form-label">Type:</label>
+                <select class="form-select" id="kbType" onchange="toggleKbType()">
+                  <option value="text">Text / Q&A</option>
+                  <option value="file">Document</option>
+                </select>
+              </div>
+
+              <div id="kbTextForm">
+                <div class="form-group">
+                  <label class="form-label">Topic / Keywords:</label>
+                  <input type="text" class="form-input" id="kbQuestion" placeholder="Keywords for searching (e.g. pricing, models, outreach)">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Information:</label>
+                  <textarea class="form-textarea" id="kbAnswer" style="min-height:100px" placeholder="The information AI should know..."></textarea>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Example Q&A (optional):</label>
+                  <textarea class="form-textarea" id="kbExamples" style="min-height:80px" placeholder="Q: How much does it cost?&#10;A: The pricing is $100 setup fee and 20% monthly..."></textarea>
+                </div>
+              </div>
+
+              <div id="kbFileForm" style="display:none">
+                <div class="form-group">
+                  <label class="form-label">Document Title / Keywords:</label>
+                  <input type="text" class="form-input" id="kbFileTitle" placeholder="Title and keywords for searching">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Document Content:</label>
+                  <textarea class="form-textarea" id="kbFileContent" style="min-height:120px" placeholder="Paste the document content..."></textarea>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Example Q&A (optional):</label>
+                  <textarea class="form-textarea" id="kbFileExamples" style="min-height:80px" placeholder="Q: What does this document say about X?&#10;A: According to the document..."></textarea>
+                </div>
+              </div>
+
+              <button class="btn btn-primary" onclick="addKnowledge()">Add to Database</button>
+            </div>
+          </div>
+
+          <div class="box">
+            <div class="box-header">All Knowledge Entries</div>
+            <div class="box-body" id="kbList" style="max-height:400px;overflow-y:auto"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== OUTREACH ==================== -->
+    <div id="outreach" class="section">
+      <div class="section-title">Outreach</div>
+      <div class="tabs">
+        <div class="tab active" data-t="o-ig">Instagram</div>
+        <div class="tab" data-t="o-tw">Twitter</div>
+        <div class="tab" data-t="o-wc">Webcams</div>
+        <div class="tab" data-t="o-os">Outseeker</div>
+        <div class="tab" data-t="o-op">Openers</div>
+        <div class="tab" data-t="o-fu">Follow-ups</div>
+        <div class="tab" data-t="o-sc">Scripts</div>
+      </div>
+
+      <!-- Instagram -->
+      <div id="o-ig" class="tab-content active">
+        <div class="box">
+          <div class="box-header">Instagram Accounts <button class="btn btn-sm btn-primary" onclick="modal('outreach-acc','instagram')">Add Account</button></div>
+          <div class="box-body">
+            <div id="warmupGuideIg" style="margin-bottom:15px"></div>
+            <div id="igList"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Twitter -->
+      <div id="o-tw" class="tab-content">
+        <div class="box">
+          <div class="box-header">Twitter Accounts <button class="btn btn-sm btn-primary" onclick="modal('outreach-acc','twitter')">Add Account</button></div>
+          <div class="box-body">
+            <div id="warmupGuideTw" style="margin-bottom:15px"></div>
+            <div id="twList"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Webcams -->
+      <div id="o-wc" class="tab-content">
+        <div class="box">
+          <div class="box-header">Webcam Accounts <button class="btn btn-sm btn-primary" onclick="modal('outreach-acc','webcam')">Add Account</button></div>
+          <div class="box-body" id="wcList"></div>
+        </div>
+      </div>
+
+      <!-- Outseeker -->
+      <div id="o-os" class="tab-content">
+        <div class="box">
+          <div class="box-header">Outseeker Tracking <button class="btn btn-sm btn-primary" onclick="modal('outseeker')">Log Today</button></div>
+          <div class="box-body">
+            <div class="grid grid-3" style="margin-bottom:15px">
+              <div class="stat-box">
+                <div class="stat-value" id="osActive">0</div>
+                <div class="stat-label">Active OF Accounts</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-value" id="osUSA">0</div>
+                <div class="stat-label">USA Running Today</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-value" id="osESP">0</div>
+                <div class="stat-label">ESP Running Today</div>
+              </div>
+            </div>
+            <div class="box-header">Daily Logs</div>
+            <div id="osLog"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Openers -->
+      <div id="o-op" class="tab-content">
+        <div class="box">
+          <div class="box-header">Openers <button class="btn btn-sm btn-primary" onclick="modal('script','opener')">Add Opener</button></div>
+          <div class="box-body">
+            <div class="form-group">
+              <label class="form-label">Filter by type:</label>
+              <select class="form-select" id="openerFilter" onchange="loadOpeners()" style="width:200px">
+                <option value="">All</option>
+                <option value="instagram">Instagram</option>
+                <option value="twitter">Twitter</option>
+                <option value="webcam">Webcam</option>
+              </select>
+            </div>
+            <div id="openerList"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Follow-ups -->
+      <div id="o-fu" class="tab-content">
+        <div class="box">
+          <div class="box-header">Follow-ups <button class="btn btn-sm btn-primary" onclick="modal('script','followup')">Add Follow-up</button></div>
+          <div class="box-body">
+            <div class="form-group">
+              <label class="form-label">Filter by type:</label>
+              <select class="form-select" id="followupFilter" onchange="loadFollowups()" style="width:200px">
+                <option value="">All</option>
+                <option value="instagram">Instagram</option>
+                <option value="twitter">Twitter</option>
+                <option value="webcam">Webcam</option>
+              </select>
+            </div>
+            <div id="followupList"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scripts -->
+      <div id="o-sc" class="tab-content">
+        <div class="box">
+          <div class="box-header">Conversation Scripts <button class="btn btn-sm btn-primary" onclick="modal('script','script')">Add Script</button></div>
+          <div class="box-body" id="scriptList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== MODELS ==================== -->
+    <div id="models" class="section">
+      <div class="section-title">Models <button class="btn btn-primary" onclick="modal('model')">Add Model</button></div>
+      <div class="tabs">
+        <div class="tab active" data-t="m-pot">Potential</div>
+        <div class="tab" data-t="m-act">Active</div>
+      </div>
+      <div id="m-pot" class="tab-content active">
+        <div class="grid grid-4" id="potList"></div>
+      </div>
+      <div id="m-act" class="tab-content">
+        <div class="grid grid-4" id="actList"></div>
+      </div>
+    </div>
+
+    <!-- ==================== CONTENT ==================== -->
+    <div id="content" class="section">
+      <div class="section-title">Content <button class="btn btn-primary" onclick="modal('content')">Submit Content</button></div>
+      <div class="tabs">
+        <div class="tab active" data-t="c-pend">Pending</div>
+        <div class="tab" data-t="c-appr">Approved</div>
+        <div class="tab" data-t="c-posted">Posted</div>
+        <div class="tab" data-t="c-rej">Rejected</div>
+        <div class="tab" data-t="c-prompts">Prompt Library</div>
+      </div>
+      <div id="c-pend" class="tab-content active">
+        <div class="grid grid-3" id="contentPending"></div>
+      </div>
+      <div id="c-appr" class="tab-content">
+        <div class="grid grid-3" id="contentApproved"></div>
+      </div>
+      <div id="c-posted" class="tab-content">
+        <div class="grid grid-3" id="contentPosted"></div>
+      </div>
+      <div id="c-rej" class="tab-content">
+        <div class="grid grid-3" id="contentRejected"></div>
+      </div>
+      <div id="c-prompts" class="tab-content">
+        <div class="box">
+          <div class="box-header">Saved Prompts <button class="btn btn-sm btn-primary" onclick="modal('prompt')">Add Prompt</button></div>
+          <div id="promptList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== POSTING ==================== -->
+    <div id="posting" class="section">
+      <div class="section-title">
+        <span>Posting Accounts</span>
+        <button class="btn btn-primary" onclick="modal('posting')">Add Account</button>
+      </div>
+      <div id="postList"></div>
+    </div>
+
+    <!-- ==================== SETTINGS (Admin Only) ==================== -->
+    <div id="settings" class="section">
+      <div class="section-title">Settings</div>
+      <div class="tabs">
+        <div class="tab active" data-t="s-tasks">Task Presets</div>
+        <div class="tab" data-t="s-rate">Hourly Rate</div>
+      </div>
+
+      <!-- Task Presets -->
+      <div id="s-tasks" class="tab-content active">
+        <div class="box">
+          <div class="box-header">Daily Task Presets <button class="btn btn-sm btn-primary" onclick="modal('taskPreset')">Add Task</button></div>
+          <div class="box-body" id="presetList"></div>
+        </div>
+      </div>
+
+      <!-- Hourly Rate -->
+      <div id="s-rate" class="tab-content">
+        <div class="box">
+          <div class="box-header">Hourly Rate Settings</div>
+          <div class="box-body">
+            <div class="form-group">
+              <label class="form-label">Assistant hourly rate ($):</label>
+              <input type="number" class="form-input" id="rateInput" step="0.5" style="width:150px">
+            </div>
+            <button class="btn btn-primary" onclick="saveRate()">Save Rate</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- MODAL -->
+  <div class="modal" id="modal">
+    <div class="modal-box" id="mBox">
+      <div class="modal-header">
+        <span class="modal-title" id="mTitle">Modal</span>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-body" id="mBody"></div>
+    </div>
+  </div>
+
+  <!-- TASK GUIDE TOOLTIP -->
+  <div class="task-guide-tooltip" id="taskGuide">
+    <div class="guide-title" id="guideTitle"></div>
+    <div class="guide-text" id="guideText"></div>
+    <div class="guide-images" id="guideImages"></div>
+    <div class="guide-video" id="guideVideo"></div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/piexifjs@1.0.6/piexif.min.js"></script>
+  <script src="js/config.js?v=3"></script>
+  <script src="js/db.js?v=3"></script>
+  <script src="js/video-spoof.js?v=9"></script>
+  <script src="js/admin2.js?v=28"></script>
+</body>
+</html>

@@ -1,0 +1,3183 @@
+// ============================================
+// TEAM APP - Admin Interface
+// ============================================
+
+DB.init();
+
+// Auth check
+if (!DB.isLoggedIn() || DB.getUser().role !== 'admin') {
+  location.href = 'index.html';
+}
+
+document.getElementById('userName').textContent = DB.getUser().id;
+
+// ============================================
+// NAVIGATION
+// ============================================
+document.querySelectorAll('.nav-link').forEach(link => {
+  link.onclick = () => {
+    document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    link.classList.add('active');
+    document.getElementById(link.dataset.s).classList.add('active');
+    loadSection(link.dataset.s);
+  };
+});
+
+// Tabs
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.onclick = () => {
+    const parent = tab.parentElement;
+    parent.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const section = parent.closest('.section');
+    section.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.getElementById(tab.dataset.t).classList.add('active');
+  };
+});
+
+function logout() {
+  DB.logout();
+  location.href = 'index.html';
+}
+
+function loadSection(s) {
+  // Stop Telegram checking when leaving AI section
+  if (s !== 'ai' && typeof stopTelegramCheck === 'function') {
+    stopTelegramCheck();
+  }
+
+  switch(s) {
+    case 'daily': loadDaily(); break;
+    case 'ai': loadAI(); break;
+    case 'outreach': loadOutreach(); break;
+    case 'models': loadModels(); break;
+    case 'content': loadContent(); break;
+    case 'posting': loadPosting(); break;
+    case 'settings': loadSettings(); break;
+  }
+}
+
+// ============================================
+// DATE NAVIGATION
+// ============================================
+let curDate = new Date().toISOString().split('T')[0];
+let calendarDate = new Date();
+document.getElementById('curDate').value = curDate;
+
+function chgDate(d) {
+  const dt = new Date(curDate);
+  dt.setDate(dt.getDate() + d);
+  curDate = dt.toISOString().split('T')[0];
+  document.getElementById('curDate').value = curDate;
+  loadDayDetail();
+}
+
+function goToday() {
+  curDate = new Date().toISOString().split('T')[0];
+  document.getElementById('curDate').value = curDate;
+  loadDayDetail();
+}
+
+function chgMonth(d) {
+  calendarDate.setMonth(calendarDate.getMonth() + d);
+  loadCalendar();
+}
+
+function selectDate(date) {
+  curDate = date;
+  document.getElementById('curDate').value = date;
+  // Switch to Day Detail tab
+  document.querySelectorAll('#daily .tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('#daily .tab-content').forEach(c => c.classList.remove('active'));
+  document.querySelector('#daily .tab[data-t="t-day"]').classList.add('active');
+  document.getElementById('t-day').classList.add('active');
+  loadDayDetail();
+}
+
+// ============================================
+// DAILY SECTION
+// ============================================
+const userId = CONFIG.assistant;
+
+async function loadDaily() {
+  await loadDayDetail();
+  await loadPayroll();
+  await loadWallets();
+  await loadCalendar();
+}
+
+// Get work_days data for a specific date
+async function getDayData(date) {
+  const days = await DB.getAll('work_days', [
+    { field: 'userId', value: userId },
+    { field: 'date', value: date }
+  ]);
+  return days[0] || { date, status: null, hours: 0, report: '', bonus: 0 };
+}
+
+// Load Day Detail tab
+async function loadDayDetail() {
+  try {
+    const day = await getDayData(curDate);
+
+    // Update day status display
+    const statusEl = document.getElementById('dayStatus');
+    if (statusEl) {
+      if (day.status === 'completed') {
+        statusEl.innerHTML = '<span class="status status-healthy">Completed</span>';
+      } else if (day.status === 'dayoff') {
+        statusEl.innerHTML = '<span class="status" style="background:#f55;color:#fff">Day Off</span>';
+      } else if (day.status === 'planned') {
+        statusEl.innerHTML = '<span class="status status-pending">Planned</span>';
+      } else {
+        statusEl.innerHTML = '<span class="status status-gray">Not Planned</span>';
+      }
+    }
+
+    // Update button states
+    document.getElementById('btnPlanned')?.classList.toggle('btn-primary', day.status === 'planned');
+    document.getElementById('btnDayOff')?.classList.toggle('btn-danger', day.status === 'dayoff');
+    document.getElementById('btnComplete')?.classList.toggle('btn-primary', day.status === 'completed');
+
+    // Load tasks (returns completed bonus amount)
+    const completedBonus = await loadTasks();
+
+    // Load report data
+    const hoursInput = document.getElementById('dayHours');
+    const reportInput = document.getElementById('reportTxt');
+    if (hoursInput) hoursInput.value = day.hours || '';
+    if (reportInput) reportInput.value = day.report || '';
+
+    // Calculate day earnings (including bonus)
+    const rateSetting = await DB.getSetting('hourly_rate');
+    const rate = rateSetting?.value || CONFIG.hourlyRate || 5;
+    const hours = day.hours || 0;
+    const total = (hours * rate) + (completedBonus || 0);
+
+    const hoursDisplay = document.getElementById('dayHoursDisplay');
+    const rateDisplay = document.getElementById('dayRate');
+    const totalDisplay = document.getElementById('dayTotal');
+
+    if (hoursDisplay) hoursDisplay.textContent = hours + 'h';
+    if (rateDisplay) rateDisplay.textContent = '$' + rate;
+    if (totalDisplay) totalDisplay.textContent = '$' + total.toFixed(2);
+  } catch (e) {
+    console.error('Day detail error:', e);
+  }
+}
+
+// Set day status (planned, dayoff, completed)
+async function setDayStatus(status) {
+  const existing = await DB.getAll('work_days', [
+    { field: 'userId', value: userId },
+    { field: 'date', value: curDate }
+  ]);
+
+  let newStatus = status;
+  let dayData = existing[0] || { hours: 0, report: '' };
+
+  // Toggle off if clicking same status
+  if (existing.length > 0 && existing[0].status === status) {
+    newStatus = 'planned';
+  }
+
+  if (existing.length > 0) {
+    await DB.update('work_days', existing[0].id, { status: newStatus });
+    dayData = { ...existing[0], status: newStatus };
+  } else {
+    const newDay = {
+      userId: userId,
+      date: curDate,
+      status: newStatus,
+      hours: 0,
+      report: '',
+      createdAt: new Date()
+    };
+    await DB.add('work_days', newDay);
+    dayData = newDay;
+  }
+
+  // If marking as completed, create pending payment
+  if (newStatus === 'completed') {
+    await createPendingPayment(curDate, dayData.hours || 0);
+  }
+
+  // If un-completing, remove pending payment
+  if (status === 'completed' && newStatus === 'planned') {
+    await removePendingPayment(curDate);
+  }
+
+  toast('Day status updated', 'success');
+  loadDayDetail();
+  loadCalendar();
+  loadPayroll();
+}
+
+// Create pending payment for completed day
+async function createPendingPayment(date, hours) {
+  console.log('createPendingPayment called:', { date, hours, userId });
+  try {
+    // Check if payment already exists
+    const existing = await DB.getAll('payroll', [
+      { field: 'userId', value: userId },
+      { field: 'date', value: date }
+    ]);
+    console.log('Existing payroll entries:', existing);
+
+    const rateSetting = await DB.getSetting('hourly_rate');
+    const rate = rateSetting?.value || CONFIG.hourlyRate || 5;
+    const amount = hours * rate;
+    console.log('Payment calc:', { rate, amount });
+
+    if (existing.length > 0) {
+      // Update if pending
+      if (existing[0].status === 'pending') {
+        await DB.update('payroll', existing[0].id, { hours, amount });
+        console.log('Updated existing payment:', existing[0].id);
+      }
+    } else {
+      // Create new
+      const newId = await DB.add('payroll', {
+        userId: userId,
+        date: date,
+        hours: hours,
+        amount: amount,
+        status: 'pending',
+        createdAt: new Date()
+      });
+      console.log('Created new pending payment:', newId);
+    }
+  } catch (e) {
+    console.error('createPendingPayment error:', e);
+  }
+}
+
+// Remove pending payment
+async function removePendingPayment(date) {
+  const existing = await DB.getAll('payroll', [
+    { field: 'userId', value: userId },
+    { field: 'date', value: date },
+    { field: 'status', value: 'pending' }
+  ]);
+
+  for (const p of existing) {
+    await DB.delete('payroll', p.id);
+  }
+}
+
+// Save day report (hours + report text)
+async function saveDayReport() {
+  const hours = parseFloat(document.getElementById('dayHours').value) || 0;
+  const report = document.getElementById('reportTxt').value.trim();
+
+  const existing = await DB.getAll('work_days', [
+    { field: 'userId', value: userId },
+    { field: 'date', value: curDate }
+  ]);
+
+  let dayStatus = 'planned';
+  if (existing.length > 0) {
+    dayStatus = existing[0].status;
+    await DB.update('work_days', existing[0].id, { hours, report });
+  } else {
+    await DB.add('work_days', {
+      userId: userId,
+      date: curDate,
+      status: 'planned',
+      hours: hours,
+      report: report,
+      createdAt: new Date()
+    });
+  }
+
+  // If day is completed, update the pending payment
+  if (dayStatus === 'completed') {
+    await createPendingPayment(curDate, hours);
+  }
+
+  toast('Report saved!', 'success');
+  loadDayDetail();
+  loadCalendar();
+  loadPayroll();
+}
+
+// Plan next 7 days as work days
+async function planNextWeek() {
+  const today = new Date();
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() + i);
+    const dateStr = d.toISOString().split('T')[0];
+
+    const existing = await DB.getAll('work_days', [
+      { field: 'userId', value: userId },
+      { field: 'date', value: dateStr }
+    ]);
+
+    if (existing.length === 0) {
+      await DB.add('work_days', {
+        userId: userId,
+        date: dateStr,
+        status: 'planned',
+        hours: 0,
+        report: '',
+        createdAt: new Date()
+      });
+    }
+  }
+
+  toast('Next 7 days planned!', 'success');
+  loadCalendar();
+}
+
+// --- TASKS ---
+async function loadTasks() {
+  try {
+    const tasks = await DB.getDailyTasks(userId, curDate);
+    const presets = await DB.getTaskPresets();
+    const manualTasks = await DB.getAll('manual_tasks', [
+      { field: 'userId', value: userId },
+      { field: 'date', value: curDate }
+    ]);
+
+  const presetDone = tasks.filter(t => t.done).length;
+  const manualDone = manualTasks.filter(t => t.done).length;
+  const totalTasks = presets.length + manualTasks.length;
+  const totalDone = presetDone + manualDone;
+
+  document.getElementById('taskProg').textContent = `${totalDone}/${totalTasks}`;
+
+  let html = '';
+
+  // Preset tasks - clickable to toggle
+  presets.forEach(p => {
+    const t = tasks.find(x => x.taskId === p.id);
+    const isDone = t?.done || false;
+    const taskDocId = t?.id || null;
+    html += `<div class="task-item ${isDone ? 'done' : ''}" onclick="togglePresetTask('${p.id}', '${taskDocId}', ${isDone})" style="cursor:pointer">
+      <span style="color:${isDone ? '#0f0' : '#f55'}">${isDone ? '✓' : '○'}</span>
+      <span class="task-name">${p.name}</span>
+      ${p.guide || p.images || p.video ? '<span style="color:#666;font-size:10px">(has guide)</span>' : ''}
+    </div>`;
+  });
+
+  // Manual/custom tasks - clickable to toggle
+  manualTasks.forEach(m => {
+    const bonusLabel = m.bonus > 0 ? `<span style="color:#0f0;font-weight:bold;margin-left:5px">+$${m.bonus}</span>` : '';
+    html += `<div class="task-item ${m.done ? 'done' : ''}" style="${m.bonus > 0 ? 'border-left:3px solid #0f0' : ''};cursor:pointer">
+      <span style="color:${m.done ? '#0f0' : '#f55'}" onclick="toggleManualTask('${m.id}', ${!m.done})">${m.done ? '✓' : '○'}</span>
+      <span class="task-name" onclick="toggleManualTask('${m.id}', ${!m.done})">${m.name}${bonusLabel}</span>
+      <button class="btn btn-sm" style="margin-left:auto;padding:2px 6px;font-size:9px" onclick="event.stopPropagation();deleteManualTask('${m.id}')">×</button>
+    </div>`;
+  });
+
+  // Add task form
+  html += `
+    <div style="margin-top:15px;padding-top:10px;border-top:1px solid #222">
+      <div id="addTaskForm" style="display:none;margin-bottom:10px">
+        <input type="text" class="form-input" id="newTaskName" placeholder="Task name..." style="margin-bottom:5px">
+        <div style="display:flex;gap:5px;align-items:center;margin-bottom:5px">
+          <label style="font-size:10px;color:#0f0">Bonus $:</label>
+          <input type="number" class="form-input" id="newTaskBonus" placeholder="0" style="width:60px" min="0" step="0.5">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="saveManualTask()">Add</button>
+        <button class="btn btn-sm" onclick="hideAddTask()">Cancel</button>
+      </div>
+      <button class="btn btn-sm" id="addTaskBtn" onclick="showAddTask()">+ Add Task</button>
+    </div>
+  `;
+
+  document.getElementById('taskList').innerHTML = html || '<div class="empty-state">No tasks</div>';
+
+    // Calculate and return bonus
+    const completedBonus = manualTasks.filter(t => t.done && t.bonus > 0).reduce((sum, t) => sum + (t.bonus || 0), 0);
+    const bonusDisplay = document.getElementById('dayBonusDisplay');
+    if (bonusDisplay) bonusDisplay.textContent = '$' + completedBonus;
+
+    return completedBonus;
+  } catch (e) {
+    console.error('Tasks error:', e);
+    document.getElementById('taskList').innerHTML = '<div class="empty-state">Error loading tasks</div>';
+    return 0;
+  }
+}
+
+// Toggle preset task done/undone
+async function togglePresetTask(presetId, taskDocId, currentDone) {
+  console.log('togglePresetTask called:', presetId, taskDocId, currentDone);
+  try {
+    if (taskDocId && taskDocId !== 'null') {
+      // Update existing task
+      await DB.update('daily_tasks', taskDocId, { done: !currentDone });
+    } else {
+      // Create new task record
+      await DB.add('daily_tasks', {
+        userId: userId,
+        date: curDate,
+        taskId: presetId,
+        done: true
+      });
+    }
+    loadTasks();
+  } catch (e) {
+    console.error('Toggle task error:', e);
+    toast('Error toggling task', 'error');
+  }
+}
+
+function showAddTask() {
+  document.getElementById('addTaskForm').style.display = 'block';
+  document.getElementById('addTaskBtn').style.display = 'none';
+  document.getElementById('newTaskName').focus();
+}
+
+function hideAddTask() {
+  document.getElementById('addTaskForm').style.display = 'none';
+  document.getElementById('addTaskBtn').style.display = 'inline-block';
+  document.getElementById('newTaskName').value = '';
+  const bonusInput = document.getElementById('newTaskBonus');
+  if (bonusInput) bonusInput.value = '';
+}
+
+async function saveManualTask() {
+  const name = document.getElementById('newTaskName').value.trim();
+  if (!name) return toast('Enter task name', 'error');
+
+  const bonus = parseFloat(document.getElementById('newTaskBonus')?.value) || 0;
+
+  await DB.add('manual_tasks', {
+    userId: userId,
+    date: curDate,
+    name: name,
+    bonus: bonus,
+    done: false
+  });
+
+  hideAddTask();
+  loadTasks();
+  toast('Task added', 'success');
+}
+
+async function toggleManualTask(id, done) {
+  console.log('toggleManualTask called:', id, done);
+  try {
+    await DB.update('manual_tasks', id, { done });
+    loadTasks();
+  } catch (e) {
+    console.error('Toggle manual task error:', e);
+    toast('Error toggling task', 'error');
+  }
+}
+
+async function deleteManualTask(id) {
+  if (await confirmDialog('Delete this task?')) {
+    await DB.delete('manual_tasks', id);
+    loadTasks();
+    toast('Task deleted', 'success');
+  }
+}
+
+
+// --- PAYROLL ---
+async function loadPayroll() {
+  try {
+    // Get payroll without orderBy to avoid index requirement
+    const payrolls = await DB.getAll('payroll', [{ field: 'userId', value: userId }]);
+    const pendingPayrolls = payrolls.filter(p => p.status === 'pending').sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    const paidPayrolls = payrolls.filter(p => p.status === 'paid').sort((a, b) => (b.paidAt?.seconds || 0) - (a.paidAt?.seconds || 0));
+
+  const pendingAmount = pendingPayrolls.reduce((sum, p) => sum + (p.amount || 0), 0);
+  const paidAmount = paidPayrolls.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+  // Update totals
+  document.getElementById('pendingTotal').textContent = '$' + pendingAmount.toFixed(2);
+  document.getElementById('paidTotal').textContent = '$' + paidAmount.toFixed(2) + ' paid';
+
+  // Pending payments
+  let pendHtml = '';
+  pendingPayrolls.forEach(p => {
+    pendHtml += `<div class="payroll-item">
+      <div style="flex:1">
+        <div class="payroll-amount">$${(p.amount || 0).toFixed(2)}</div>
+        <div class="payroll-info">${p.date || 'Unknown date'} • ${p.hours || 0}h${p.bonus > 0 ? ' + $' + p.bonus + ' bonus' : ''}</div>
+      </div>
+      <button class="btn btn-sm btn-primary" onclick="markPaid('${p.id}')">Mark Paid</button>
+    </div>`;
+  });
+  document.getElementById('payrollPending').innerHTML = pendHtml || '<div class="empty-state">No pending payments</div>';
+
+  // History
+  let histHtml = '';
+  paidPayrolls.forEach(p => {
+    const paidDate = p.paidAt ? new Date(p.paidAt.seconds * 1000).toLocaleDateString() : '-';
+    histHtml += `<div class="payroll-item">
+      <div style="flex:1">
+        <div class="payroll-amount">$${(p.amount || 0).toFixed(2)}</div>
+        <div class="payroll-info">${p.date || ''} • Paid: ${paidDate}</div>
+      </div>
+      <span class="payroll-status paid">Paid</span>
+    </div>`;
+  });
+  document.getElementById('payrollHistory').innerHTML = histHtml || '<div class="empty-state">No payment history</div>';
+  } catch (e) {
+    console.error('Payroll error:', e);
+    document.getElementById('payrollPending').innerHTML = '<div class="empty-state">Error loading payroll</div>';
+    document.getElementById('payrollHistory').innerHTML = '';
+  }
+}
+
+async function markPaid(id) {
+  if (await confirmDialog('Mark this payment as paid?')) {
+    await DB.update('payroll', id, { status: 'paid', paidAt: new Date() });
+    toast('Payment marked as paid', 'success');
+    loadPayroll();
+  }
+}
+
+// --- WALLETS ---
+async function loadWallets() {
+  const wallets = await DB.getWallets(userId);
+  let html = '';
+  wallets.forEach(w => {
+    html += `<div class="wallet-item">
+      <div>
+        <div class="wallet-type">${w.type}</div>
+        ${w.label ? `<div class="wallet-label">${w.label}</div>` : ''}
+        <div class="wallet-address">${w.address}</div>
+      </div>
+    </div>`;
+  });
+  document.getElementById('walletList').innerHTML = html || '<div class="empty-state">No wallets added by assistant</div>';
+}
+
+// --- CALENDAR ---
+async function loadCalendar() {
+  console.log('loadCalendar called');
+  try {
+    const year = calendarDate.getFullYear();
+    const month = calendarDate.getMonth();
+    console.log('Calendar year:', year, 'month:', month);
+    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    document.getElementById('calendarMonth').textContent = `${monthNames[month]} ${year}`;
+
+    // Get all work days for this month
+    const startDate = `${year}-${String(month+1).padStart(2,'0')}-01`;
+    const endDate = `${year}-${String(month+1).padStart(2,'0')}-31`;
+
+    let logs = [];
+    try {
+      logs = await DB.getAll('work_days', [{ field: 'userId', value: userId }]);
+    } catch (e) {
+      console.error('Error loading work_days:', e);
+    }
+    const monthLogs = logs.filter(l => l.date && l.date >= startDate && l.date <= endDate);
+
+    // Calculate month stats
+    let totalHours = 0;
+    let daysWorked = 0;
+    const daysData = {};
+
+    monthLogs.forEach(log => {
+      const dayHours = log.hours || 0;
+      totalHours += dayHours;
+      if (log.status === 'completed') daysWorked++;
+      daysData[log.date] = { hours: dayHours, status: log.status };
+    });
+
+    totalHours = Math.round(totalHours * 10) / 10;
+    const rateSetting = await DB.getSetting('hourly_rate');
+    const rate = rateSetting?.value || CONFIG.hourlyRate || 5;
+    const earned = totalHours * rate;
+
+    document.getElementById('monthHours').textContent = totalHours + 'h';
+    document.getElementById('monthEarned').textContent = '$' + earned.toFixed(2);
+    document.getElementById('monthDays').textContent = daysWorked;
+
+    // Build calendar grid - ALWAYS show days
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const today = new Date().toISOString().split('T')[0];
+
+    let html = '';
+
+    // Empty cells for days before month starts
+    for (let i = 0; i < firstDay; i++) {
+      html += `<div class="calendar-day other-month"></div>`;
+    }
+
+    // Days of the month
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const isToday = dateStr === today;
+      const dayData = daysData[dateStr];
+      const isSelected = dateStr === curDate;
+
+      let classes = 'calendar-day';
+      if (isToday) classes += ' today';
+      if (isSelected) classes += ' selected';
+
+      // Status styling
+      if (dayData) {
+        if (dayData.status === 'completed') classes += ' cal-completed';
+        else if (dayData.status === 'dayoff') classes += ' cal-dayoff';
+        else if (dayData.status === 'planned') classes += ' cal-planned';
+      }
+
+      html += `<div class="${classes}" onclick="selectDate('${dateStr}')">
+        <div class="day-num">${d}</div>
+        ${dayData && dayData.hours > 0 ? `<div class="day-hours">${dayData.hours}h</div>` : ''}
+      </div>`;
+    }
+
+    console.log('Calendar HTML length:', html.length);
+    document.getElementById('calendarGrid').innerHTML = html;
+
+    // Daily history - detailed version with tasks
+    let histHtml = '';
+    if (monthLogs.length === 0) {
+      histHtml = '<div class="empty-state">No work logged this month</div>';
+    } else {
+      // Fetch all tasks data for the month
+      const allDailyTasks = await DB.getAll('daily_tasks', [{ field: 'userId', value: userId }]);
+      const allManualTasks = await DB.getAll('manual_tasks', [{ field: 'userId', value: userId }]);
+      const presets = await DB.getTaskPresets();
+      const presetsMap = {};
+      presets.forEach(p => presetsMap[p.id] = p.name);
+
+      const sortedLogs = [...monthLogs].sort((a, b) => b.date.localeCompare(a.date));
+
+      for (const log of sortedLogs.slice(0, 20)) {
+        const dayHours = log.hours || 0;
+        const dayEarned = (dayHours * rate).toFixed(2);
+        const reportPreview = log.report ? log.report.substring(0, 80) + (log.report.length > 80 ? '...' : '') : '';
+
+        // Get tasks for this day (deduplicated)
+        const dayPresetTasks = allDailyTasks.filter(t => t.date === log.date && t.done);
+        const dayManualTasks = allManualTasks.filter(t => t.date === log.date);
+
+        // Calculate bonus
+        const dayBonus = dayManualTasks.filter(t => t.done && t.bonus > 0).reduce((sum, t) => sum + (t.bonus || 0), 0);
+
+        // Build tasks HTML (deduplicate by taskId/name)
+        let tasksHtml = '';
+        const shownTasks = new Set();
+        dayPresetTasks.forEach(t => {
+          if (shownTasks.has(t.taskId)) return;
+          shownTasks.add(t.taskId);
+          const name = presetsMap[t.taskId] || t.taskId;
+          tasksHtml += `<span class="history-task done">✓ ${name}</span>`;
+        });
+        dayManualTasks.filter(t => t.done).forEach(t => {
+          if (shownTasks.has(t.name)) return;
+          shownTasks.add(t.name);
+          const bonusClass = t.bonus > 0 ? ' bonus' : '';
+          const bonusLabel = t.bonus > 0 ? ` +$${t.bonus}` : '';
+          tasksHtml += `<span class="history-task done${bonusClass}">✓ ${t.name}${bonusLabel}</span>`;
+        });
+
+        histHtml += `<div class="history-item" onclick="selectDate('${log.date}')">
+          <div class="history-header">
+            <span class="history-date">${log.date}</span>
+            <div class="history-stats">
+              <span class="history-hours">${dayHours}h</span>
+              <span class="history-earned">$${dayEarned}</span>
+              ${dayBonus > 0 ? `<span class="history-bonus">+$${dayBonus} bonus</span>` : ''}
+            </div>
+          </div>
+          ${tasksHtml ? `<div class="history-tasks-list">${tasksHtml}</div>` : ''}
+          ${reportPreview ? `<div class="history-report">${reportPreview}</div>` : ''}
+        </div>`;
+      }
+    }
+    document.getElementById('dailyHistory').innerHTML = histHtml;
+
+  } catch (e) {
+    console.error('Calendar error:', e);
+    document.getElementById('calendarGrid').innerHTML = '<div class="empty-state">Error loading calendar</div>';
+  }
+}
+
+// ============================================
+// AI CHAT & KNOWLEDGE BASE
+// ============================================
+
+let chatMessages = [];
+let aiContextCache = null;
+
+// Initialize AI Chat
+async function initAIChat() {
+  try {
+    // Load ALL chat history - no limit, everything saved forever
+    const chatHistory = await DB.getAll('ai_chat_history', [
+      { field: 'userId', value: 'admin' }
+    ]);
+
+    // Sort by timestamp
+    chatMessages = chatHistory.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+
+    console.log('Loaded chat history:', chatMessages.length, 'messages');
+
+    // Display messages
+    let html = `<div class="chat-msg ai">
+      <div class="chat-msg-bubble">Hi Boss! I'm your AI Expert Assistant. Ask me anything!</div>
+    </div>`;
+
+    chatMessages.forEach(m => {
+      html += `<div class="chat-msg ${m.role === 'ai' ? 'ai' : 'user'}">
+        <div class="chat-msg-bubble">${escapeHtml(m.content)}</div>
+      </div>`;
+    });
+
+    document.getElementById('chatMsgs').innerHTML = html;
+    document.getElementById('chatMsgs').scrollTop = document.getElementById('chatMsgs').scrollHeight;
+  } catch (e) {
+    console.error('Error loading chat history:', e);
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML.replace(/\n/g, '<br>');
+}
+
+// Search chat history for relevant past conversations
+function searchChatHistory(query, messages) {
+  if (!messages || messages.length === 0) return [];
+
+  const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+  if (queryWords.length === 0) return [];
+
+  const scored = messages.map(m => {
+    const text = m.content.toLowerCase();
+    let score = 0;
+
+    queryWords.forEach(word => {
+      if (text.includes(word)) score += 1;
+    });
+
+    return { ...m, score };
+  });
+
+  // Return top 10 most relevant messages (both Q and A for context)
+  const relevant = scored.filter(m => m.score > 0).sort((a, b) => b.score - a.score);
+
+  // Get messages with their context (previous/next message for Q&A pairs)
+  const result = [];
+  const addedIndexes = new Set();
+
+  relevant.slice(0, 5).forEach(m => {
+    const idx = messages.findIndex(msg => msg.timestamp === m.timestamp);
+    if (idx >= 0 && !addedIndexes.has(idx)) {
+      // Add the message and its pair (Q gets A, A gets Q)
+      result.push(messages[idx]);
+      addedIndexes.add(idx);
+
+      if (idx > 0 && !addedIndexes.has(idx - 1)) {
+        result.push(messages[idx - 1]);
+        addedIndexes.add(idx - 1);
+      }
+      if (idx < messages.length - 1 && !addedIndexes.has(idx + 1)) {
+        result.push(messages[idx + 1]);
+        addedIndexes.add(idx + 1);
+      }
+    }
+  });
+
+  return result.sort((a, b) => a.timestamp - b.timestamp).slice(0, 10);
+}
+
+// Search knowledge base for relevant entries
+async function searchKnowledge(query) {
+  const allKnowledge = await DB.getKnowledge();
+  const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+
+  const scored = allKnowledge.map(k => {
+    const text = ((k.keywords || k.question || '') + ' ' + (k.content || k.answer || '')).toLowerCase();
+    let score = 0;
+
+    queryWords.forEach(word => {
+      if (text.includes(word)) score += 1;
+      if ((k.keywords || k.question || '').toLowerCase().includes(word)) score += 2;
+    });
+
+    return { ...k, score };
+  });
+
+  return scored
+    .filter(k => k.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 10);
+}
+
+// Build AI context with smart retrieval
+async function buildAIContext(userQuery) {
+  let context = `You are the AI EXPERT ASSISTANT for TEAM. You help boss Mori manage everything.
+
+YOUR CAPABILITIES:
+- You have access to a knowledge database that gets searched for each question
+- You remember our conversation history
+- You learn from information added to the database
+- You actively improve by asking follow-up questions
+
+RULES:
+- Answer based on the RELEVANT KNOWLEDGE below - this is your database
+- If no relevant knowledge found, say "I don't have information about that in my database yet"
+- Be helpful, professional, concise
+- Never make up specific info not in your database
+
+LEARNING BEHAVIOR - IMPORTANT:
+- After answering, sometimes ask a follow-up question to learn more
+- Ask things like: "Should I remember this for next time?" or "Want to tell me more details about this?"
+- When you don't have info, ask: "Want to explain this so I know for next time?"
+- If topic is unclear, ask clarifying questions to understand better
+- Goal: Become smarter with each conversation by learning from Boss
+
+`;
+
+  // SMART RETRIEVAL: Search for relevant knowledge
+  const relevantKnowledge = await searchKnowledge(userQuery);
+  if (relevantKnowledge.length > 0) {
+    context += "=== RELEVANT KNOWLEDGE FROM DATABASE ===\n";
+    relevantKnowledge.forEach(k => {
+      const title = k.keywords || k.question || k.title || 'Info';
+      const content = k.content || k.answer || '';
+      context += `[${title}]\n${content}\n`;
+
+      // Training data from Boss feedback - PRIORITY
+      if (k.type === 'training' || k.source === 'telegram' || k.source === 'telegram_training') {
+        if (k.moriFeedback) {
+          context += `\n🎯 BOSS SAYS: ${k.moriFeedback}\n`;
+        }
+        if (k.recommendedAnswer) {
+          context += `\n🎯 CORRECT ANSWER: ${k.recommendedAnswer}\n`;
+        }
+        if (k.concerns && k.concerns.length > 0) {
+          context += `⚠️ AVOID: ${k.concerns.join('; ')}\n`;
+        }
+        if (k.positives && k.positives.length > 0) {
+          context += `✓ GOOD: ${k.positives.join('; ')}\n`;
+        }
+      }
+
+      // Include example Q&A if available
+      if (k.examples) {
+        context += `\nEXAMPLE HOW TO ANSWER:\n${k.examples}\n`;
+      }
+      context += '\n';
+    });
+  } else {
+    context += "=== NO MATCHING KNOWLEDGE FOUND ===\nNo entries in database match this query.\n\n";
+  }
+
+  // Always include active models
+  const models = await DB.getAll('models');
+  if (models.length > 0) {
+    context += "=== ACTIVE MODELS ===\n";
+    models.forEach(m => context += `- ${m.name} (${m.status})\n`);
+    context += "\n";
+  }
+
+  return context;
+}
+
+async function sendMsg() {
+  const input = document.getElementById('chatIn');
+  const msg = input.value.trim();
+  if (!msg) return;
+
+  input.value = '';
+  const sendBtn = document.getElementById('sendBtn');
+  sendBtn.disabled = true;
+  sendBtn.textContent = '...';
+
+  const today = new Date().toISOString().split('T')[0];
+
+  // Add user message to display
+  document.getElementById('chatMsgs').innerHTML += `<div class="chat-msg user">
+    <div class="chat-msg-bubble">${escapeHtml(msg)}</div>
+  </div>`;
+
+  // Save user message
+  await DB.add('ai_chat_history', {
+    userId: 'admin',
+    date: today,
+    role: 'user',
+    content: msg,
+    timestamp: Date.now()
+  });
+  chatMessages.push({ role: 'user', content: msg, timestamp: Date.now() });
+
+  // Show typing indicator
+  document.getElementById('chatMsgs').innerHTML += `<div class="chat-msg ai" id="aiTyping">
+    <div class="chat-msg-bubble"><span class="typing">Thinking</span></div>
+  </div>`;
+  document.getElementById('chatMsgs').scrollTop = document.getElementById('chatMsgs').scrollHeight;
+
+  try {
+    // Build context with smart retrieval based on user's question
+    const systemPrompt = await buildAIContext(msg);
+
+    // Search old chat history for relevant past conversations
+    const relevantOldChats = searchChatHistory(msg, chatMessages.slice(0, -20)); // Search older messages
+
+    // Recent conversation (last 100 messages for continuity)
+    const recentMsgs = chatMessages.slice(-100);
+
+    // Build messages array with relevant old context + recent conversation
+    let contextMsgs = [];
+
+    // Add relevant old conversations as context
+    if (relevantOldChats.length > 0) {
+      const oldContext = relevantOldChats.map(m => `[${new Date(m.timestamp).toLocaleDateString()}] ${m.role === 'user' ? 'Q' : 'A'}: ${m.content}`).join('\n');
+      contextMsgs.push({
+        role: 'system',
+        content: `RELEVANT PAST CONVERSATIONS:\n${oldContext}\n\n---`
+      });
+    }
+
+    const apiMessages = [
+      { role: 'system', content: systemPrompt },
+      ...contextMsgs,
+      ...recentMsgs.map(m => ({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.content })),
+      { role: 'user', content: msg }
+    ];
+
+    const response = await fetch(CONFIG.llm.endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${CONFIG.llm.apiKey}`,
+        'HTTP-Referer': window.location.href,
+        'X-Title': 'TEAM Admin'
+      },
+      body: JSON.stringify({
+        model: CONFIG.llm.model,
+        messages: apiMessages,
+        max_tokens: 1500,
+        temperature: 0.7
+      })
+    });
+
+    const data = await response.json();
+    console.log('API Response:', data);
+
+    if (data.error) {
+      throw new Error(data.error.message || JSON.stringify(data.error));
+    }
+
+    const aiReply = data.choices?.[0]?.message?.content || 'Sorry, I could not generate a response. Please try again.';
+
+    // Save AI response
+    await DB.add('ai_chat_history', {
+      userId: 'admin',
+      date: today,
+      role: 'ai',
+      content: aiReply,
+      timestamp: Date.now()
+    });
+    chatMessages.push({ role: 'ai', content: aiReply, timestamp: Date.now() });
+
+    // Send to Telegram and save review with message ID
+    const reviewId = Date.now().toString(36);
+    const telegramMsgId = await sendTelegramReview(reviewId, msg, aiReply);
+
+    // Save review with telegram message ID
+    await DB.set('ai_reviews', reviewId, {
+      question: msg,
+      aiAnswer: aiReply,
+      status: 'pending',
+      telegramMsgId: telegramMsgId,
+      createdAt: new Date()
+    });
+
+    console.log('Review saved:', reviewId, 'telegramMsgId:', telegramMsgId);
+
+    // Update display - with save to KB button
+    document.getElementById('aiTyping').outerHTML = `<div class="chat-msg ai">
+      <div class="chat-msg-bubble">${escapeHtml(aiReply)}</div>
+      <div class="chat-msg-actions">
+        <button class="btn btn-sm" onclick="saveToKB('${encodeURIComponent(msg)}', '${encodeURIComponent(aiReply)}')">💾 Save to KB</button>
+      </div>
+    </div>`;
+
+  } catch (err) {
+    console.error('AI Error:', err);
+    document.getElementById('aiTyping').outerHTML = `<div class="chat-msg ai">
+      <div class="chat-msg-bubble" style="color:#f55">Error: ${err.message || 'Could not get response. Check console.'}</div>
+    </div>`;
+  }
+
+  sendBtn.disabled = false;
+  sendBtn.textContent = 'Send';
+  document.getElementById('chatMsgs').scrollTop = document.getElementById('chatMsgs').scrollHeight;
+}
+
+// Save chat Q&A to Database (training from chat)
+async function saveToKB(question, answer) {
+  const q = decodeURIComponent(question);
+  const a = decodeURIComponent(answer);
+
+  const keywords = q.toLowerCase().split(/\s+/).filter(w => w.length > 3).slice(0, 5).join(' ');
+
+  await DB.add('knowledge_base', {
+    type: 'text',
+    keywords: keywords || q.substring(0, 50).toLowerCase(),
+    content: `Q: ${q}\nA: ${a}`,
+    source: 'chat',
+    createdAt: new Date()
+  });
+
+  toast('Saved to database!', 'success');
+  loadAI();
+}
+
+// Toggle form based on knowledge type
+function toggleKbType() {
+  const type = document.getElementById('kbType').value;
+  document.getElementById('kbTextForm').style.display = type === 'text' ? 'block' : 'none';
+  document.getElementById('kbFileForm').style.display = type === 'file' ? 'block' : 'none';
+}
+
+// Add knowledge to database
+async function addKnowledge() {
+  const type = document.getElementById('kbType').value;
+  let data = { type, createdAt: new Date() };
+
+  if (type === 'text') {
+    const keywords = document.getElementById('kbQuestion').value.trim();
+    const content = document.getElementById('kbAnswer').value.trim();
+    const examples = document.getElementById('kbExamples').value.trim();
+    if (!keywords || !content) {
+      return toast('Please fill in both fields', 'error');
+    }
+    data.keywords = keywords.toLowerCase();
+    data.content = content;
+    if (examples) data.examples = examples;
+  } else if (type === 'file') {
+    const title = document.getElementById('kbFileTitle').value.trim();
+    const content = document.getElementById('kbFileContent').value.trim();
+    const examples = document.getElementById('kbFileExamples').value.trim();
+    if (!title || !content) {
+      return toast('Please fill in both fields', 'error');
+    }
+    data.keywords = title.toLowerCase();
+    data.content = content;
+    data.title = title;
+    if (examples) data.examples = examples;
+  }
+
+  await DB.add('knowledge_base', data);
+
+  // Clear forms
+  document.getElementById('kbQuestion').value = '';
+  document.getElementById('kbAnswer').value = '';
+  document.getElementById('kbExamples').value = '';
+  document.getElementById('kbFileTitle').value = '';
+  document.getElementById('kbFileContent').value = '';
+  document.getElementById('kbFileExamples').value = '';
+
+  toast('Added to database!', 'success');
+  loadAI();
+}
+
+async function loadAI() {
+  // Initialize chat
+  await initAIChat();
+
+  // Start checking Telegram for replies (auto-training)
+  startTelegramCheck();
+
+  // Load knowledge base list
+  const kb = await DB.getKnowledge();
+
+  // Separate training entries from regular entries
+  const trainingEntries = kb.filter(k => k.type === 'training' || k.source === 'telegram' || k.source === 'telegram_training');
+  const regularEntries = kb.filter(k => k.type !== 'training' && k.source !== 'telegram' && k.source !== 'telegram_training');
+
+  // Knowledge Base list
+  let kbHtml = '';
+
+  // Show training entries first with special styling
+  if (trainingEntries.length > 0) {
+    kbHtml += `<div style="margin-bottom:15px;padding:10px;background:#1a1a00;border:1px solid #ff0;border-radius:4px">
+      <div style="color:#ff0;font-weight:bold;margin-bottom:10px">🎓 BOSS TRAINING (${trainingEntries.length})</div>`;
+
+    trainingEntries.forEach(k => {
+      const q = k.question || k.keywords || 'Training';
+      kbHtml += `<div class="kb-item" style="border-left:3px solid #ff0">
+        <div style="color:#0f0;font-weight:bold;margin-bottom:5px">Q: ${escapeHtml(q.substring(0, 100))}</div>`;
+
+      if (k.moriFeedback) {
+        kbHtml += `<div style="color:#ff0;font-size:11px;margin:5px 0">💬 Boss: ${escapeHtml(k.moriFeedback.substring(0, 150))}${k.moriFeedback.length > 150 ? '...' : ''}</div>`;
+      }
+
+      kbHtml += `<div style="margin-top:8px">
+          <button class="btn btn-sm" onclick="viewKB('${k.id}')">View</button>
+          <button class="btn btn-sm" onclick="delKB('${k.id}')">Delete</button>
+        </div>
+      </div>`;
+    });
+
+    kbHtml += `</div>`;
+  }
+
+  // Regular entries
+  regularEntries.forEach(k => {
+    const typeIcon = k.type === 'file' ? '📄' : '📝';
+    const title = k.keywords || k.question || k.title || 'Entry';
+    const content = k.content || k.answer || '';
+
+    kbHtml += `<div class="kb-item">
+      <div class="kb-question">
+        <span style="margin-right:5px">${typeIcon}</span>
+        ${title}
+      </div>
+      <div class="kb-answer">${escapeHtml(content.substring(0, 200))}${content.length > 200 ? '...' : ''}</div>
+      <div style="margin-top:8px">
+        <button class="btn btn-sm" onclick="editKB('${k.id}')">Edit</button>
+        <button class="btn btn-sm" onclick="delKB('${k.id}')">Delete</button>
+      </div>
+    </div>`;
+  });
+
+  document.getElementById('kbList').innerHTML = kbHtml || '<div class="empty-state">No entries in database. Add information for AI to use.</div>';
+}
+
+async function delKB(id) {
+  if (await confirmDialog('Delete this knowledge entry?')) {
+    await DB.delete('knowledge_base', id);
+    toast('Knowledge entry deleted', 'success');
+    loadAI();
+  }
+}
+
+async function viewKB(id) {
+  const k = await DB.get('knowledge_base', id);
+  if (!k) return toast('Entry not found', 'error');
+
+  const m = document.getElementById('modal');
+  document.getElementById('mTitle').textContent = '🎓 Training Detail';
+  document.getElementById('mBox').className = 'modal-box large';
+
+  let html = `<div style="max-height:500px;overflow-y:auto">`;
+
+  html += `<div style="margin-bottom:15px">
+    <div style="color:#666;font-size:10px">QUESTION:</div>
+    <div style="color:#0f0;font-size:14px;font-weight:bold">${escapeHtml(k.question || k.keywords || '')}</div>
+  </div>`;
+
+  if (k.aiAnswer) {
+    html += `<div style="margin-bottom:15px;padding:10px;background:#1a1a1a;border-radius:4px">
+      <div style="color:#666;font-size:10px">AI ANSWERED:</div>
+      <div style="color:#999;font-size:12px">${escapeHtml(k.aiAnswer)}</div>
+    </div>`;
+  }
+
+  if (k.moriFeedback) {
+    html += `<div style="margin-bottom:15px;padding:10px;background:#1a1a00;border:1px solid #ff0;border-radius:4px">
+      <div style="color:#ff0;font-size:10px">💬 BOSS FEEDBACK:</div>
+      <div style="color:#fff;font-size:12px;white-space:pre-wrap">${escapeHtml(k.moriFeedback)}</div>
+    </div>`;
+  }
+
+  html += `</div>
+    <button class="btn btn-primary" onclick="closeModal()">Close</button>`;
+
+  document.getElementById('mBody').innerHTML = html;
+  m.classList.add('active');
+}
+
+async function editKB(id) {
+  const kb = await DB.get('knowledge_base', id);
+  modal('kbEdit', kb);
+}
+
+function showKbEditModal(kb) {
+  const m = document.getElementById('modal');
+  document.getElementById('mTitle').textContent = 'Edit Database Entry';
+  document.getElementById('mBox').className = 'modal-box large';
+
+  const typeLabel = kb.type === 'file' ? 'Document' : 'Text';
+  const keywords = kb.keywords || kb.question || '';
+  const content = kb.content || kb.answer || '';
+  const examples = kb.examples || '';
+
+  document.getElementById('mBody').innerHTML = `
+    <div class="form-group">
+      <label class="form-label">Type: <span style="color:#0f0">${typeLabel}</span></label>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Keywords:</label>
+      <input type="text" class="form-input" id="editKbQ" value="${keywords}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Content:</label>
+      <textarea class="form-textarea" id="editKbA" style="min-height:120px">${content}</textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Example Q&A:</label>
+      <textarea class="form-textarea" id="editKbEx" style="min-height:80px" placeholder="Q: Example question?&#10;A: Example answer...">${examples}</textarea>
+    </div>
+    <button class="btn btn-primary" onclick="updateKB('${kb.id}')">Update Entry</button>
+  `;
+  m.classList.add('active');
+}
+
+async function updateKB(id) {
+  const data = {
+    keywords: document.getElementById('editKbQ').value.toLowerCase(),
+    content: document.getElementById('editKbA').value,
+    examples: document.getElementById('editKbEx').value
+  };
+  await DB.update('knowledge_base', id, data);
+  closeModal();
+  loadAI();
+}
+
+function answerQ(id, q, aiResponse) {
+  modal('answerQ', { id, question: decodeURIComponent(q), aiResponse: decodeURIComponent(aiResponse) });
+}
+
+async function dismissQ(id) {
+  if (await confirmDialog('Dismiss this question? It won\'t be added to KB.')) {
+    await DB.update('uncertain_questions', id, { answered: true, dismissed: true });
+    toast('Question dismissed', 'success');
+    loadAI();
+  }
+}
+
+// AI Review functions
+async function approveReview(id) {
+  // Mark as approved - AI answered correctly
+  await DB.update('ai_reviews', id, { status: 'approved', reviewedAt: new Date() });
+  toast('AI odpoved schvalena!', 'success');
+  loadAI();
+}
+
+async function dismissReview(id) {
+  // Just dismiss without saving to KB
+  await DB.update('ai_reviews', id, { status: 'dismissed', reviewedAt: new Date() });
+  toast('Review zahozeno', 'success');
+  loadAI();
+}
+
+function correctReview(id, question, aiAnswer) {
+  // Open modal to correct the answer
+  const q = decodeURIComponent(question);
+  const a = decodeURIComponent(aiAnswer);
+
+  const m = document.getElementById('modal');
+  document.getElementById('mTitle').textContent = 'Opravit AI odpoved';
+  document.getElementById('mBox').className = 'modal-box large';
+
+  document.getElementById('mBody').innerHTML = `
+    <div class="form-group">
+      <label class="form-label">Otazka:</label>
+      <div style="background:#111;padding:10px;border-radius:4px;color:#0f0">${escapeHtml(q)}</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">AI odpovdela (spatne):</label>
+      <div style="background:#111;padding:10px;border-radius:4px;color:#666;font-size:11px">${escapeHtml(a.substring(0, 200))}...</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Spravna odpoved:</label>
+      <textarea class="form-textarea" id="correctAnswer" style="min-height:120px" placeholder="Napiste spravnou odpoved..."></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Klicova slova (pro vyhledavani):</label>
+      <input type="text" class="form-input" id="correctKeywords" value="${q.toLowerCase().split(/\s+/).filter(w => w.length > 3).slice(0, 5).join(' ')}">
+    </div>
+    <button class="btn btn-primary" onclick="saveCorrection('${id}','${encodeURIComponent(q)}')">Ulozit opravu do databaze</button>
+  `;
+  m.classList.add('active');
+}
+
+async function saveCorrection(reviewId, question) {
+  const q = decodeURIComponent(question);
+  const answer = document.getElementById('correctAnswer').value.trim();
+  const keywords = document.getElementById('correctKeywords').value.trim();
+
+  if (!answer) {
+    return toast('Napiste spravnou odpoved', 'error');
+  }
+
+  // Save to knowledge base
+  await DB.add('knowledge_base', {
+    type: 'text',
+    keywords: keywords || q.substring(0, 50).toLowerCase(),
+    content: `Q: ${q}\nA: ${answer}`,
+    source: 'correction',
+    createdAt: new Date()
+  });
+
+  // Mark review as corrected
+  await DB.update('ai_reviews', reviewId, {
+    status: 'corrected',
+    correction: answer,
+    reviewedAt: new Date()
+  });
+
+  closeModal();
+  toast('Oprava ulozena! AI se nauci.', 'success');
+
+  // Notify via Telegram
+  sendTelegramUpdate(`📚 AI Knowledge Updated\n\nQ: ${q}\nCorrect A: ${answer.substring(0, 200)}...`);
+
+  loadAI();
+}
+
+// ============================================
+// OUTREACH
+// ============================================
+async function loadOutreach() {
+  const ig = await DB.getAccounts('instagram');
+  const tw = await DB.getAccounts('twitter');
+  const wc = await DB.getAccounts('webcam');
+
+  document.getElementById('igList').innerHTML = renderAccounts(ig);
+  document.getElementById('twList').innerHTML = renderAccounts(tw);
+  document.getElementById('wcList').innerHTML = renderAccounts(wc);
+
+  // Outseeker
+  const logs = await DB.getOutseekerLogs();
+  const latest = logs[0];
+  if (latest) {
+    document.getElementById('osA').textContent = latest.activeAccounts || 0;
+    document.getElementById('osU').textContent = latest.usaRunning || 0;
+    document.getElementById('osE').textContent = latest.espRunning || 0;
+  }
+
+  let osHtml = '';
+  logs.forEach(l => {
+    osHtml += `<div class="list-item">
+      <span>${l.date}</span>
+      <span>Active: ${l.activeAccounts} | USA: ${l.usaRunning} | ESP: ${l.espRunning} | Outreached: ${l.outreached || 0}</span>
+    </div>`;
+  });
+  document.getElementById('osLog').innerHTML = osHtml || '<div class="empty-state">No outseeker logs</div>';
+
+  // Scripts
+  const scripts = await DB.getScripts();
+  document.getElementById('scOpen').innerHTML = renderScripts(scripts.filter(s => s.type === 'opener'));
+  document.getElementById('scFollow').innerHTML = renderScripts(scripts.filter(s => s.type === 'followup'));
+  document.getElementById('scScript').innerHTML = renderScripts(scripts.filter(s => s.type === 'script'));
+}
+
+function renderAccounts(accs) {
+  if (!accs.length) return '<div class="empty-state">No accounts</div>';
+  let html = '';
+  accs.forEach(a => {
+    html += `<div class="acc-card">
+      <div class="acc-card-header">
+        <span class="acc-card-title">@${a.username}</span>
+        <span class="status ${a.healthy ? 'status-healthy' : 'status-expired'}">${a.healthy ? 'Healthy' : 'Expired'}</span>
+      </div>
+      <div class="acc-card-body">
+        <div>Location: ${a.location || '-'}</div>
+        ${a.proxyStatus ? `<div>Proxy: ${a.proxyStatus} ${a.proxyType || ''}</div>` : ''}
+      </div>
+      <div class="acc-card-actions">
+        <button class="btn btn-sm" onclick="delAcc('${a.id}')">Delete</button>
+      </div>
+    </div>`;
+  });
+  return html;
+}
+
+function renderScripts(scripts) {
+  if (!scripts.length) return '<div class="empty-state">No scripts</div>';
+  let html = '';
+  scripts.forEach(s => {
+    html += `<div class="script-box" onclick="copyScript('${encodeURIComponent(s.text)}')">
+      ${s.platform ? `<span class="status status-${s.platform === 'instagram' ? 'healthy' : 'pending'}">${s.platform}</span>` : ''}
+      ${s.title ? `<strong>${s.title}</strong><br>` : ''}
+      ${s.text.substring(0, 80)}...
+      <button class="btn btn-sm" style="float:right" onclick="event.stopPropagation();delScript('${s.id}')">X</button>
+    </div>`;
+  });
+  return html;
+}
+
+function copyScript(text) {
+  navigator.clipboard.writeText(decodeURIComponent(text));
+  toast('Copied!', 'success');
+}
+
+async function delAcc(id) {
+  if (await confirmDialog('Delete this account?')) {
+    await DB.delete('accounts', id);
+    toast('Account deleted', 'success');
+    loadOutreach();
+  }
+}
+
+async function delScript(id) {
+  if (await confirmDialog('Delete this script?')) {
+    await DB.delete('scripts', id);
+    toast('Script deleted', 'success');
+    loadOutreach();
+  }
+}
+
+// ============================================
+// MODELS
+// ============================================
+async function loadModels() {
+  const pot = await DB.getModels('potential');
+  const act = await DB.getModels('active');
+
+  document.getElementById('potList').innerHTML = renderModels(pot) || '<div class="empty-state">No potential models</div>';
+  document.getElementById('actList').innerHTML = renderModels(act) || '<div class="empty-state">No active models</div>';
+}
+
+function renderModels(models) {
+  if (!models.length) return '';
+  let html = '';
+  models.forEach(m => {
+    html += `<div class="model-card" onclick="modal('modelView','${m.id}')">
+      <div class="model-card-img">
+        ${m.photo ? `<img src="${m.photo}" alt="${m.name}">` : 'No Photo'}
+      </div>
+      <div class="model-card-body">
+        <div class="model-card-name">${m.name}</div>
+        <div class="model-card-info">
+          <div>${m.country || '-'}, ${m.age || '-'}y</div>
+          <span class="status status-${m.status}">${m.status}</span>
+        </div>
+      </div>
+    </div>`;
+  });
+  return html;
+}
+
+// ============================================
+// CONTENT
+// ============================================
+
+let spoofFiles = [];
+let currentSpoofContentId = null;
+
+async function loadContent() {
+  try {
+    const allContent = await DB.getAll('content', [{ field: 'userId', value: userId }]);
+    const pending = allContent.filter(c => c.status === 'pending');
+    const approved = allContent.filter(c => c.status === 'approved' && !c.posted);
+    const posted = allContent.filter(c => c.posted === true);
+    const rejected = allContent.filter(c => c.status === 'rejected');
+
+    document.getElementById('contentPending').innerHTML = renderContentCards(pending, 'pending') || '<div class="empty-state">No pending content</div>';
+    document.getElementById('contentApproved').innerHTML = renderContentCards(approved, 'approved') || '<div class="empty-state">No approved content</div>';
+    document.getElementById('contentPosted').innerHTML = renderContentCards(posted, 'posted') || '<div class="empty-state">No posted content yet</div>';
+    document.getElementById('contentRejected').innerHTML = renderContentCards(rejected, 'rejected') || '<div class="empty-state">No rejected content</div>';
+
+    loadPrompts();
+  } catch (e) {
+    console.error('Content load error:', e);
+  }
+}
+
+function renderContentCards(items, tab) {
+  if (!items.length) return '';
+  let html = '';
+  items.forEach(c => {
+    const isVideo = c.mediaType === 'video' || c.contentType === 'video' || c.contentType === 'reels' ||
+                    c.mediaUrl?.includes('vimeo') || c.mediaUrl?.includes('.mp4') || c.mediaUrl?.includes('.mov');
+    const displayUrl = c.spoofedUrl || c.mediaUrl;
+
+    // Check for Vimeo
+    const vimeoMatch = displayUrl?.match(/vimeo\.com\/(\d+)/) || displayUrl?.match(/player\.vimeo\.com\/video\/(\d+)/);
+
+    // Build media HTML
+    let mediaHtml;
+    if (!displayUrl) {
+      mediaHtml = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#666;font-size:11px">No media</div>';
+    } else if (vimeoMatch) {
+      // Vimeo embed player
+      mediaHtml = `<iframe
+        src="https://player.vimeo.com/video/${vimeoMatch[1]}?badge=0&autopause=0&player_id=0&app_id=58479&muted=1"
+        style="width:100%;height:100%;border:none"
+        allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media"
+        loading="lazy"
+        referrerpolicy="no-referrer"></iframe>`;
+    } else if (isVideo) {
+      // Direct video player
+      mediaHtml = `<video
+        src="${displayUrl}"
+        style="width:100%;height:100%;object-fit:cover;background:#000"
+        muted
+        loop
+        playsinline
+        preload="metadata"
+        onmouseover="this.play()"
+        onmouseout="this.pause()"></video>`;
+    } else {
+      // Image
+      mediaHtml = `<img src="${displayUrl}" style="width:100%;height:100%;object-fit:cover" loading="lazy">`;
+    }
+
+    // Format dates helper
+    const fmtDate = (d) => {
+      if (!d) return null;
+      const date = new Date(d.seconds ? d.seconds * 1000 : d);
+      return date.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'short' });
+    };
+
+    const uploadedDate = fmtDate(c.createdAt);
+    const spoofedDate = fmtDate(c.spoofedAt);
+    const postedDate = fmtDate(c.postedAt);
+
+    let actionsHtml = '';
+    let statusHtml = '';
+    let datesHtml = '<div class="content-card-dates">';
+    if (uploadedDate) datesHtml += `<span>📤 ${uploadedDate}</span>`;
+    if (spoofedDate) datesHtml += `<span>🔧 ${spoofedDate}</span>`;
+    if (postedDate) datesHtml += `<span>✅ ${postedDate}</span>`;
+    datesHtml += '</div>';
+
+    if (tab === 'pending') {
+      actionsHtml = `
+        <button class="btn btn-sm btn-primary" onclick="approveContent('${c.id}')">Approve</button>
+        <button class="btn btn-sm" onclick="rejectContentModal('${c.id}')">Reject</button>
+      `;
+    } else if (tab === 'approved') {
+      statusHtml = `<span class="content-status-tag ${c.spoofed ? 'done' : 'pending'}">${c.spoofed ? '✓ Spoofed' : '○ Not Spoofed'}</span>`;
+      actionsHtml = `
+        <button class="btn btn-sm" onclick="openSpoofer('${c.id}')">Spoof</button>
+        <button class="btn btn-sm btn-primary" onclick="markPosted('${c.id}')">Posted</button>
+        <button class="btn btn-sm" onclick="viewContent('${c.id}')">View</button>
+      `;
+    } else if (tab === 'posted') {
+      statusHtml = `
+        <span class="content-status-tag done">✓ Posted</span>
+        ${c.spoofed ? `<span class="content-status-tag done">✓ Spoofed</span>` : ''}
+      `;
+      actionsHtml = `<button class="btn btn-sm" onclick="viewContent('${c.id}')">View</button>`;
+    } else if (tab === 'rejected') {
+      statusHtml = c.rejectNote ? `<div style="color:#f55;font-size:10px;margin-top:5px">Reason: ${c.rejectNote}</div>` : '';
+      actionsHtml = `<button class="btn btn-sm" onclick="deleteContent('${c.id}')">Delete</button>`;
+    }
+
+    html += `<div class="content-card">
+      <div class="content-card-media">
+        ${mediaHtml}
+        <span class="content-card-badge ${c.contentType || 'photo'}">${c.contentType || 'photo'}</span>
+      </div>
+      <div class="content-card-body">
+        <div class="content-card-header">
+          <span class="content-card-account">@${c.accountUsername || 'unknown'}</span>
+          <span class="content-card-platform">${c.platform || ''}</span>
+        </div>
+        ${datesHtml}
+        ${c.description ? `<div style="font-size:10px;color:#888;margin-bottom:6px">${c.description}</div>` : ''}
+        <div class="content-card-status">${statusHtml}</div>
+        <div class="content-card-actions">${actionsHtml}</div>
+      </div>
+    </div>`;
+  });
+  return html;
+}
+
+async function approveContent(id) {
+  await DB.update('content', id, { status: 'approved', approvedAt: new Date() });
+  toast('Content approved', 'success');
+  loadContent();
+}
+
+function rejectContentModal(id) {
+  const note = prompt('Rejection reason:');
+  if (note !== null) {
+    rejectContent(id, note);
+  }
+}
+
+async function rejectContent(id, note) {
+  await DB.update('content', id, { status: 'rejected', rejectNote: note || '', rejectedAt: new Date() });
+  toast('Content rejected', 'success');
+  loadContent();
+}
+
+async function markPosted(id) {
+  await DB.update('content', id, { posted: true, postedAt: new Date() });
+  toast('Moved to Posted', 'success');
+  loadContent();
+}
+
+async function deleteContent(id) {
+  if (await confirmDialog('Delete this content?')) {
+    await DB.delete('content', id);
+    toast('Content deleted', 'success');
+    loadContent();
+  }
+}
+
+async function viewContent(id) {
+  const content = await DB.get('content', id);
+  if (content) modal('viewContent', content);
+}
+
+// ========== SPOOFER ==========
+function openSpoofer(contentId) {
+  currentSpoofContentId = contentId;
+  spoofFiles = [];
+  modal('spoofer', { contentId });
+}
+
+function handleSpoofFiles(input) {
+  spoofFiles = Array.from(input.files);
+  const preview = document.getElementById('spoofPreview');
+  if (spoofFiles.length > 0) {
+    preview.innerHTML = `<p style="color:#0f0">${spoofFiles.length} file(s) selected</p><div id="spoofThumbs" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:10px"></div>`;
+    const thumbsEl = document.getElementById('spoofThumbs');
+    spoofFiles.forEach((f, i) => {
+      if (f.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          thumbsEl.innerHTML += `<img src="${e.target.result}" style="width:60px;height:60px;object-fit:cover;border-radius:4px">`;
+        };
+        reader.readAsDataURL(f);
+      } else if (f.type.startsWith('video/')) {
+        thumbsEl.innerHTML += `<div style="width:60px;height:60px;background:#222;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:20px">🎬</div>`;
+      }
+    });
+  }
+}
+
+async function processSpoof() {
+  if (spoofFiles.length === 0) {
+    return toast('Please select files first', 'error');
+  }
+
+  const city = document.getElementById('spoofCity').value;
+  const device = document.getElementById('spoofDevice').value;
+  const statusEl = document.getElementById('spoofStatus');
+  const resultsEl = document.getElementById('spoofResults');
+
+  resultsEl.innerHTML = '';
+  statusEl.innerHTML = '<span style="color:#ff0">Processing...</span>';
+
+  let processed = 0;
+  const results = [];
+
+  for (const file of spoofFiles) {
+    try {
+      statusEl.innerHTML = `<span style="color:#ff0">Processing ${processed + 1}/${spoofFiles.length}: ${file.name}...</span>`;
+
+      if (file.type.startsWith('image/')) {
+        const result = await spoofImageBrowser(file, city, device);
+        results.push(result);
+      } else if (file.type.startsWith('video/')) {
+        const result = await spoofVideoBrowser(file, city, device);
+        results.push(result);
+      }
+      processed++;
+    } catch (e) {
+      console.error('Spoof error:', e);
+      results.push({ type: 'error', filename: file.name, error: e.message });
+    }
+  }
+
+  // Display results
+  resultsEl.innerHTML = '<div style="margin-top:15px"><strong style="color:#0f0">✓ Results:</strong></div><div id="spoofResultsList" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px"></div>';
+  const listEl = document.getElementById('spoofResultsList');
+
+  results.forEach((r, i) => {
+    if (r.type === 'error') {
+      listEl.innerHTML += `<div style="padding:10px;background:#300;border-radius:4px;font-size:10px;color:#f55">${r.filename}: ${r.error}</div>`;
+    } else {
+      const isVideo = r.type === 'video';
+      const thumbEl = isVideo ?
+        `<video src="${r.blobUrl}" style="width:80px;height:80px;object-fit:cover;border-radius:4px"></video>` :
+        `<img src="${r.blobUrl}" style="width:80px;height:80px;object-fit:cover;border-radius:4px">`;
+
+      listEl.innerHTML += `
+        <div style="text-align:center">
+          ${thumbEl}
+          <a href="${r.blobUrl}" download="${r.filename}" class="btn btn-sm" style="margin-top:5px;font-size:9px;display:block">⬇ Download</a>
+        </div>`;
+    }
+  });
+
+  const successCount = results.filter(r => r.type !== 'error').length;
+  statusEl.innerHTML = `
+    <div style="color:#0f0;margin-bottom:15px">✓ ${successCount}/${spoofFiles.length} files processed with full iPhone metadata.</div>
+    <button class="btn btn-primary" onclick="markSpoofedManually()">Done - Mark as Spoofed</button>
+  `;
+}
+
+// Video spoof - uses VideoSpoofer for proper MP4 metadata injection
+async function spoofVideoBrowser(file, city, device) {
+  return await VideoSpoofer.spoof(file, city, device);
+}
+
+// Browser fallback for images (with piexif for EXIF)
+async function spoofImageBrowser(file, city, device) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Random transforms
+        const cropPct = 0.005 + Math.random() * 0.015;
+        const cropX = Math.floor(img.width * cropPct);
+        const cropY = Math.floor(img.height * cropPct);
+        canvas.width = img.width - cropX * 2;
+        canvas.height = img.height - cropY * 2;
+
+        const rotation = (Math.random() - 0.5);
+        const flip = Math.random() > 0.5;
+
+        ctx.save();
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate(rotation * Math.PI / 180);
+        if (flip) ctx.scale(-1, 1);
+        ctx.translate(-canvas.width / 2, -canvas.height / 2);
+        ctx.drawImage(img, cropX, cropY, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
+        ctx.restore();
+
+        // Color adjustments
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        const brightness = 0.98 + Math.random() * 0.04;
+        const contrast = 0.98 + Math.random() * 0.04;
+        for (let i = 0; i < data.length; i += 4) {
+          data[i] = Math.min(255, Math.max(0, (data[i] - 128) * contrast + 128) * brightness);
+          data[i+1] = Math.min(255, Math.max(0, (data[i+1] - 128) * contrast + 128) * brightness);
+          data[i+2] = Math.min(255, Math.max(0, (data[i+2] - 128) * contrast + 128) * brightness);
+        }
+        ctx.putImageData(imageData, 0, 0);
+
+        let dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+
+        // Add EXIF if piexif available
+        if (typeof piexif !== 'undefined') {
+          try {
+            const exif = createBrowserExif(city, device);
+            dataUrl = piexif.insert(exif, dataUrl);
+          } catch (ex) { console.warn('EXIF failed:', ex); }
+        }
+
+        // Convert to blob
+        fetch(dataUrl).then(r => r.blob()).then(blob => {
+          resolve({
+            type: 'image',
+            blobUrl: URL.createObjectURL(blob),
+            filename: `IMG_${Date.now()}.jpg`
+          });
+        });
+      };
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.src = e.target.result;
+    };
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+// Randomize GPS coordinates within ~2km radius
+function randomizeGPS(lat, lon) {
+  // Random offset: ±0.02 degrees = roughly ±2km
+  const latOffset = (Math.random() - 0.5) * 0.04;
+  const lonOffset = (Math.random() - 0.5) * 0.04;
+  return [lat + latOffset, lon + lonOffset];
+}
+
+// Get random altitude based on city
+function getRandomAltitude(baseAlt) {
+  return Math.max(0, baseAlt + Math.floor((Math.random() - 0.5) * 20));
+}
+
+function createBrowserExif(city, device) {
+  const cities = {
+    "New York": [40.7128, -74.0060, 10], "Los Angeles": [34.0522, -118.2437, 71],
+    "Miami": [25.7617, -80.1918, 2], "Chicago": [41.8781, -87.6298, 181],
+    "London": [51.5074, -0.1278, 11], "Prague": [50.0755, 14.4378, 235],
+    "Paris": [48.8566, 2.3522, 35], "Berlin": [52.5200, 13.4050, 34],
+    "Tokyo": [35.6762, 139.6503, 40], "Sydney": [-33.8688, 151.2093, 58],
+    "Dubai": [25.2048, 55.2708, 5], "Toronto": [43.6532, -79.3832, 76],
+    "Amsterdam": [52.3676, 4.9041, 2], "Barcelona": [41.3851, 2.1734, 12],
+    "Rome": [41.9028, 12.4964, 21], "Vienna": [48.2082, 16.3738, 171],
+    "Singapore": [1.3521, 103.8198, 15], "Hong Kong": [22.3193, 114.1694, 32],
+    "Seoul": [37.5665, 126.9780, 38], "Mumbai": [19.0760, 72.8777, 14]
+  };
+  const devices = {
+    "iPhone 16 Pro": { make: "Apple", model: "iPhone 16 Pro", software: "18.2.1", lens: "iPhone 16 Pro back triple camera 6.765mm f/1.78" },
+    "iPhone 16 Pro Max": { make: "Apple", model: "iPhone 16 Pro Max", software: "18.2.1", lens: "iPhone 16 Pro Max back triple camera 6.765mm f/1.78" },
+    "iPhone 17 Pro": { make: "Apple", model: "iPhone 17 Pro", software: "19.0", lens: "iPhone 17 Pro back triple camera 6.765mm f/1.78" },
+    "iPhone 17 Pro Max": { make: "Apple", model: "iPhone 17 Pro Max", software: "19.0", lens: "iPhone 17 Pro Max back triple camera 6.765mm f/1.78" }
+  };
+
+  const baseCoords = cities[city] || cities["New York"];
+  const randomCoords = randomizeGPS(baseCoords[0], baseCoords[1]);
+  const altitude = getRandomAltitude(baseCoords[2] || 10);
+  const dev = devices[device] || devices["iPhone 16 Pro"];
+
+  // Random date within last 7 days
+  const now = new Date();
+  now.setDate(now.getDate() - Math.floor(Math.random() * 7));
+  now.setHours(8 + Math.floor(Math.random() * 12));
+  now.setMinutes(Math.floor(Math.random() * 60));
+  now.setSeconds(Math.floor(Math.random() * 60));
+  const dateStr = now.toISOString().replace('T', ' ').substring(0, 19).replace(/-/g, ':');
+
+  // Random realistic camera settings
+  const isoValues = [50, 64, 80, 100, 125, 160, 200, 250, 320, 400];
+  const exposureTimes = [[1, 60], [1, 100], [1, 125], [1, 200], [1, 250], [1, 500], [1, 1000]];
+  const fNumbers = [[178, 100], [189, 100], [220, 100], [280, 100]];
+
+  const iso = isoValues[Math.floor(Math.random() * isoValues.length)];
+  const exposure = exposureTimes[Math.floor(Math.random() * exposureTimes.length)];
+  const fNumber = fNumbers[Math.floor(Math.random() * fNumbers.length)];
+
+  const toDMS = (d) => {
+    const abs = Math.abs(d), deg = Math.floor(abs), min = Math.floor((abs - deg) * 60);
+    return [[deg, 1], [min, 1], [Math.round(((abs - deg) * 60 - min) * 60 * 10000), 10000]];
+  };
+
+  return piexif.dump({
+    "0th": {
+      [piexif.ImageIFD.Make]: dev.make,
+      [piexif.ImageIFD.Model]: dev.model,
+      [piexif.ImageIFD.Software]: dev.software,
+      [piexif.ImageIFD.DateTime]: dateStr,
+      [piexif.ImageIFD.Orientation]: 1,
+      [piexif.ImageIFD.XResolution]: [72, 1],
+      [piexif.ImageIFD.YResolution]: [72, 1],
+      [piexif.ImageIFD.ResolutionUnit]: 2
+    },
+    "Exif": {
+      [piexif.ExifIFD.DateTimeOriginal]: dateStr,
+      [piexif.ExifIFD.DateTimeDigitized]: dateStr,
+      [piexif.ExifIFD.LensMake]: "Apple",
+      [piexif.ExifIFD.LensModel]: dev.lens,
+      [piexif.ExifIFD.FocalLength]: [6765, 1000],
+      [piexif.ExifIFD.FocalLengthIn35mmFilm]: 24,
+      [piexif.ExifIFD.FNumber]: fNumber,
+      [piexif.ExifIFD.ExposureTime]: exposure,
+      [piexif.ExifIFD.ISOSpeedRatings]: iso,
+      [piexif.ExifIFD.ExposureProgram]: 2,
+      [piexif.ExifIFD.ExposureMode]: 0,
+      [piexif.ExifIFD.WhiteBalance]: 0,
+      [piexif.ExifIFD.MeteringMode]: 5,
+      [piexif.ExifIFD.Flash]: 16,
+      [piexif.ExifIFD.ColorSpace]: 65535,
+      [piexif.ExifIFD.SensingMethod]: 2,
+      [piexif.ExifIFD.SceneType]: "\x01",
+      [piexif.ExifIFD.SubjectArea]: [2009, 1506, 2208, 1324],
+      [piexif.ExifIFD.SubSecTimeOriginal]: String(Math.floor(Math.random() * 1000)).padStart(3, '0'),
+      [piexif.ExifIFD.SubSecTimeDigitized]: String(Math.floor(Math.random() * 1000)).padStart(3, '0')
+    },
+    "GPS": {
+      [piexif.GPSIFD.GPSVersionID]: [2, 3, 0, 0],
+      [piexif.GPSIFD.GPSLatitudeRef]: randomCoords[0] >= 0 ? "N" : "S",
+      [piexif.GPSIFD.GPSLatitude]: toDMS(randomCoords[0]),
+      [piexif.GPSIFD.GPSLongitudeRef]: randomCoords[1] >= 0 ? "E" : "W",
+      [piexif.GPSIFD.GPSLongitude]: toDMS(randomCoords[1]),
+      [piexif.GPSIFD.GPSAltitudeRef]: 0,
+      [piexif.GPSIFD.GPSAltitude]: [altitude, 1],
+      [piexif.GPSIFD.GPSSpeedRef]: "K",
+      [piexif.GPSIFD.GPSSpeed]: [0, 1],
+      [piexif.GPSIFD.GPSImgDirectionRef]: "T",
+      [piexif.GPSIFD.GPSImgDirection]: [Math.floor(Math.random() * 36000), 100],
+      [piexif.GPSIFD.GPSDestBearingRef]: "T",
+      [piexif.GPSIFD.GPSDestBearing]: [Math.floor(Math.random() * 36000), 100],
+      [piexif.GPSIFD.GPSHPositioningError]: [5, 1]
+    }
+  });
+}
+
+async function markSpoofedManually(contentId) {
+  const city = document.getElementById('spoofCity').value;
+  const device = document.getElementById('spoofDevice').value;
+
+  await DB.update('content', contentId || currentSpoofContentId, {
+    spoofed: true,
+    spoofedAt: new Date(),
+    spoofCity: city,
+    spoofDevice: device
+  });
+
+  toast('Marked as spoofed', 'success');
+  closeModal();
+  loadContent();
+}
+
+// ========== PROMPTS ==========
+async function loadPrompts() {
+  const prompts = await DB.getAll('prompts', [{ field: 'userId', value: userId }]);
+  let html = '';
+
+  prompts.forEach(p => {
+    const refsHtml = (p.referenceImages || []).map(url =>
+      `<img src="${url}" onclick="window.open('${url}', '_blank')" style="cursor:pointer">`
+    ).join('');
+
+    const resultHtml = p.resultUrl ? (p.resultType === 'video' ?
+      `<video src="${p.resultUrl}" controls></video>` :
+      `<img src="${p.resultUrl}" onclick="window.open('${p.resultUrl}', '_blank')" style="cursor:pointer">`) : '';
+
+    html += `<div class="prompt-card">
+      <div class="prompt-card-header">
+        <span class="prompt-card-account">@${p.accountUsername || 'General'}</span>
+        <div>
+          <button class="btn btn-sm" onclick="copyPrompt('${p.id}')">Copy</button>
+          <button class="btn btn-sm" onclick="deletePrompt('${p.id}')">Delete</button>
+        </div>
+      </div>
+      <div class="prompt-card-text">${p.promptText || ''}</div>
+      ${p.workflow ? `<div style="font-size:10px;color:#666;margin-bottom:10px"><strong>Workflow:</strong> ${p.workflow}</div>` : ''}
+      ${refsHtml ? `<div class="prompt-card-refs"><strong style="width:100%;font-size:10px;margin-bottom:5px">References:</strong>${refsHtml}</div>` : ''}
+      ${resultHtml ? `<div class="prompt-card-result"><strong style="font-size:10px">Result:</strong><br>${resultHtml}</div>` : ''}
+    </div>`;
+  });
+
+  document.getElementById('promptList').innerHTML = html || '<div class="empty-state">No saved prompts yet</div>';
+}
+
+async function copyPrompt(id) {
+  const p = await DB.get('prompts', id);
+  if (p?.promptText) {
+    navigator.clipboard.writeText(p.promptText);
+    toast('Prompt copied!', 'success');
+  }
+}
+
+async function deletePrompt(id) {
+  if (await confirmDialog('Delete this prompt?')) {
+    await DB.delete('prompts', id);
+    toast('Prompt deleted', 'success');
+    loadPrompts();
+  }
+}
+
+async function savePrompt() {
+  const accountId = document.getElementById('promptAccount').value;
+  const accounts = await DB.getAll('posting_accounts');
+  const account = accounts.find(a => a.id === accountId);
+
+  const promptText = document.getElementById('promptText').value.trim();
+  const workflow = document.getElementById('promptWorkflow').value.trim();
+  const refImages = document.getElementById('promptRefs').value.trim().split(',').map(s => s.trim()).filter(s => s);
+  const resultUrl = document.getElementById('promptResult').value.trim();
+  const resultType = resultUrl.includes('vimeo') || resultUrl.includes('.mp4') ? 'video' : 'image';
+
+  if (!promptText) return toast('Enter prompt text', 'error');
+
+  await DB.add('prompts', {
+    userId: userId,
+    accountId: accountId || null,
+    accountUsername: account?.username || null,
+    platform: account?.platform || null,
+    promptText,
+    workflow,
+    referenceImages: refImages,
+    resultUrl: resultUrl || null,
+    resultType,
+    createdAt: new Date()
+  });
+
+  toast('Prompt saved!', 'success');
+  closeModal();
+  loadPrompts();
+}
+
+async function submitContent() {
+  const accountId = document.getElementById('contentAccount').value;
+  const contentType = document.getElementById('contentType').value;
+  const mediaUrl = document.getElementById('contentMediaUrl').value.trim();
+  const description = document.getElementById('contentDesc').value.trim();
+
+  if (!accountId) return toast('Select an account', 'error');
+  if (!mediaUrl) return toast('Enter media URL', 'error');
+
+  const accounts = await DB.getAll('posting_accounts');
+  const account = accounts.find(a => a.id === accountId);
+
+  const isVideo = mediaUrl.includes('vimeo') || mediaUrl.includes('.mp4') || contentType === 'reels' || contentType === 'video';
+
+  await DB.add('content', {
+    userId: userId,
+    accountId: accountId,
+    accountUsername: account?.username || '',
+    platform: account?.platform || '',
+    contentType: contentType,
+    mediaUrl: mediaUrl,
+    mediaType: isVideo ? 'video' : 'image',
+    description: description,
+    status: 'pending',
+    spoofed: false,
+    posted: false,
+    createdAt: new Date()
+  });
+
+  toast('Content submitted!', 'success');
+  closeModal();
+  loadContent();
+}
+
+// ============================================
+// POSTING
+// ============================================
+async function loadPosting() {
+  const accs = await DB.getAll('posting_accounts');
+  let html = '';
+
+  accs.forEach(a => {
+    const counts = a.typesCounts || {};
+    const typesHtml = Object.entries(counts).map(([type, count]) =>
+      `<span class="type-badge">${type}: ${count}/day</span>`
+    ).join('') || '<span style="color:#666">No posts set</span>';
+
+    const totalPosts = Object.values(counts).reduce((sum, c) => sum + c, 0);
+
+    html += `<div class="box">
+      <div class="box-header">
+        <span>${(a.platform || '').toUpperCase()} - @${a.username}</span>
+        <span style="color:#0f0">${totalPosts} posts/day</span>
+      </div>
+      <div class="box-body">
+        <div style="margin-bottom:10px">${typesHtml}</div>
+        ${a.notes ? `<div style="color:#666;font-size:11px;font-style:italic">${a.notes}</div>` : ''}
+        <div style="margin-top:12px;display:flex;gap:10px">
+          <button class="btn btn-sm" onclick="editPosting('${a.id}')">Edit</button>
+          <button class="btn btn-sm" onclick="delPosting('${a.id}')">Delete</button>
+        </div>
+      </div>
+    </div>`;
+  });
+
+  document.getElementById('postList').innerHTML = html || '<div class="empty-state">No posting accounts</div>';
+}
+
+async function delPosting(id) {
+  if (await confirmDialog('Delete this posting account?')) {
+    await DB.delete('posting_accounts', id);
+    toast('Posting account deleted', 'success');
+    loadPosting();
+  }
+}
+
+// ============================================
+// SETTINGS
+// ============================================
+async function loadSettings() {
+  // Task Presets
+  const presets = await DB.getTaskPresets();
+  let html = '';
+  presets.forEach((p, i) => {
+    html += `<div class="list-item">
+      <div style="flex:1">
+        <strong>${i+1}. ${p.name}</strong>
+        ${p.guide ? `<div style="font-size:10px;color:#666;margin-top:3px">${p.guide.substring(0, 50)}...</div>` : ''}
+        <div style="font-size:10px;color:#999">
+          ${p.images ? 'Has images ' : ''}${p.video ? 'Has video' : ''}
+        </div>
+      </div>
+      <button class="btn btn-sm" onclick="editPreset('${p.id}')">Edit</button>
+      <button class="btn btn-sm" onclick="delPreset('${p.id}')">Delete</button>
+    </div>`;
+  });
+  document.getElementById('presetList').innerHTML = html || '<div class="empty-state">No task presets. Add daily tasks for your assistant.</div>';
+
+  // Hourly Rate
+  const rate = await DB.getSetting('hourly_rate');
+  document.getElementById('rateInput').value = rate?.value || CONFIG.hourlyRate;
+}
+
+async function delPreset(id) {
+  if (await confirmDialog('Delete this task preset?')) {
+    await DB.delete('task_presets', id);
+    toast('Task preset deleted', 'success');
+    loadSettings();
+  }
+}
+
+async function saveRate() {
+  await DB.saveSetting('hourly_rate', { value: parseFloat(document.getElementById('rateInput').value) });
+  toast('Hourly rate saved!', 'success');
+}
+
+// ============================================
+// MODAL
+// ============================================
+function modal(type, data) {
+  const m = document.getElementById('modal');
+  const title = document.getElementById('mTitle');
+  const body = document.getElementById('mBody');
+  document.getElementById('mBox').className = 'modal-box';
+
+  switch(type) {
+    case 'kb':
+      title.textContent = 'Add Knowledge Entry';
+      body.innerHTML = `
+        <div class="form-group">
+          <label class="form-label">Question/Topic:</label>
+          <input type="text" class="form-input" id="kbQ" placeholder="What question should this answer?">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Answer/Info:</label>
+          <textarea class="form-textarea" id="kbA" style="min-height:150px" placeholder="The answer or information..."></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="saveKB()">Save</button>
+      `;
+      break;
+
+    case 'kbEdit':
+      showKbEditModal(data);
+      return;
+
+    case 'answerQ':
+      title.textContent = 'Add to Knowledge Base';
+      body.innerHTML = `
+        <div class="form-group">
+          <label class="form-label">Question:</label>
+          <input type="text" class="form-input" id="ansQ" value="${data.question}">
+        </div>
+        ${data.aiResponse ? `
+        <div class="form-group">
+          <label class="form-label">AI's Response (for reference):</label>
+          <div style="padding:10px;background:#0a0a0a;border:1px solid #333;font-size:11px;color:#999;max-height:100px;overflow-y:auto">${data.aiResponse}</div>
+        </div>` : ''}
+        <div class="form-group">
+          <label class="form-label">Correct Answer (will be added to KB):</label>
+          <textarea class="form-textarea" id="ansA" style="min-height:150px" placeholder="Write the correct, complete answer..."></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="saveAnswer('${data.id}')">Save to Knowledge Base</button>
+      `;
+      break;
+
+    case 'acc':
+      title.textContent = `Add ${data} Account`;
+      body.innerHTML = `
+        <div class="form-group">
+          <label class="form-label">Username:</label>
+          <input type="text" class="form-input" id="accUser">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Location:</label>
+          <select class="form-select" id="accLoc">
+            <option>Phone</option>
+            <option>PC</option>
+            <option>AdsPower</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Proxy Status:</label>
+          <select class="form-select" id="accProxy">
+            <option>Live</option>
+            <option>Expired</option>
+            <option>None</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="saveAcc('${data}')">Save</button>
+      `;
+      break;
+
+    case 'script':
+      title.textContent = `Add ${data.charAt(0).toUpperCase() + data.slice(1)}`;
+      body.innerHTML = `
+        ${data !== 'script' ? `
+        <div class="form-group">
+          <label class="form-label">Platform:</label>
+          <select class="form-select" id="scriptPlat">
+            <option value="instagram">Instagram</option>
+            <option value="twitter">Twitter</option>
+            <option value="webcam">Webcam</option>
+          </select>
+        </div>` : `
+        <div class="form-group">
+          <label class="form-label">Title:</label>
+          <input type="text" class="form-input" id="scriptTitle">
+        </div>`}
+        <div class="form-group">
+          <label class="form-label">Text:</label>
+          <textarea class="form-textarea" id="scriptTxt" style="min-height:150px"></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="saveScript('${data}')">Save</button>
+      `;
+      break;
+
+    case 'model':
+      title.textContent = 'Add Model';
+      document.getElementById('mBox').className = 'modal-box large';
+      body.innerHTML = `
+        <div class="grid grid-2">
+          <div class="form-group">
+            <label class="form-label">Name:</label>
+            <input type="text" class="form-input" id="modName">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Photo URL (imgur):</label>
+            <input type="text" class="form-input" id="modPhoto" placeholder="https://i.imgur.com/...">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Country:</label>
+            <input type="text" class="form-input" id="modCountry">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Age:</label>
+            <input type="number" class="form-input" id="modAge">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Notes:</label>
+          <textarea class="form-textarea" id="modNotes"></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="saveModel()">Save Model</button>
+      `;
+      break;
+
+    case 'modelView':
+      loadModelView(data);
+      return;
+
+    case 'posting':
+      const isEdit = data && data.id;
+      title.textContent = isEdit ? 'Edit Posting Account' : 'Add Posting Account';
+      document.getElementById('mBox').className = 'modal-box large';
+      body.innerHTML = `
+        <input type="hidden" id="postEditId" value="${isEdit ? data.id : ''}">
+        <div class="grid grid-2">
+          <div class="form-group">
+            <label class="form-label">Platform:</label>
+            <select class="form-select" id="postPlat" onchange="updatePostTypes()" ${isEdit ? 'disabled' : ''}>
+              <option value="instagram">Instagram</option>
+              <option value="tiktok">TikTok</option>
+              <option value="reddit">Reddit</option>
+              <option value="twitter">Twitter</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Username:</label>
+            <input type="text" class="form-input" id="postUser" placeholder="@username" value="${isEdit ? data.username || '' : ''}">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Posts per day by type:</label>
+          <div id="postTypesContainer"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Notes:</label>
+          <textarea class="form-textarea" id="postNotes" placeholder="Hashtags, posting times, special instructions...">${isEdit ? data.notes || '' : ''}</textarea>
+        </div>
+        <button class="btn btn-primary" onclick="savePosting()">${isEdit ? 'Update' : 'Add'} Account</button>
+      `;
+      if (isEdit) document.getElementById('postPlat').value = data.platform;
+      setTimeout(() => updatePostTypes(isEdit ? data.typesCounts : null), 10);
+      break;
+
+    case 'taskPreset':
+      title.textContent = 'Add Task Preset';
+      document.getElementById('mBox').className = 'modal-box large';
+      body.innerHTML = `
+        <div class="form-group">
+          <label class="form-label">Task Name:</label>
+          <input type="text" class="form-input" id="presetName" placeholder="What should assistant do?">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Guide/Instructions (shows on hover):</label>
+          <textarea class="form-textarea" id="presetGuide" style="min-height:150px" placeholder="Detailed explanation of how to complete this task..."></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Images (imgur URLs, comma separated):</label>
+          <input type="text" class="form-input" id="presetImages" placeholder="https://i.imgur.com/xxx.jpg, https://i.imgur.com/yyy.png">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Video (Loom or Vimeo URL):</label>
+          <input type="text" class="form-input" id="presetVideo" placeholder="https://www.loom.com/share/xxx">
+        </div>
+        <button class="btn btn-primary" onclick="savePreset()">Save Task</button>
+      `;
+      break;
+
+    case 'wallet':
+      title.textContent = 'Add Wallet';
+      body.innerHTML = `
+        <div class="form-group">
+          <label class="form-label">Wallet Type:</label>
+          <select class="form-select" id="walletType">
+            <option value="USDT TRC20">USDT TRC20</option>
+            <option value="USDT ERC20">USDT ERC20</option>
+            <option value="Bitcoin">Bitcoin</option>
+            <option value="PayPal">PayPal</option>
+            <option value="Wise">Wise</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Address:</label>
+          <input type="text" class="form-input" id="walletAddress" placeholder="Wallet address or email...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Label (optional):</label>
+          <input type="text" class="form-input" id="walletLabel" placeholder="e.g. Main wallet">
+        </div>
+        <button class="btn btn-primary" onclick="saveWallet()">Save Wallet</button>
+      `;
+      break;
+
+    case 'content':
+      title.textContent = 'Submit New Content';
+      document.getElementById('mBox').className = 'modal-box large';
+      loadContentModal();
+      return;
+
+    case 'prompt':
+      title.textContent = 'Save Prompt';
+      document.getElementById('mBox').className = 'modal-box large';
+      loadPromptModal();
+      return;
+
+    case 'spoofer':
+      title.textContent = 'Spoof Content';
+      document.getElementById('mBox').className = 'modal-box large';
+      body.innerHTML = `
+        <p style="color:#999;font-size:11px;margin-bottom:15px">Upload photos/videos to remove AI markers, strip metadata, apply subtle transforms, and add fake iPhone EXIF.</p>
+
+        <div class="grid grid-2" style="margin-bottom:15px">
+          <div class="form-group">
+            <label class="form-label">City (GPS metadata):</label>
+            <select class="form-select" id="spoofCity">
+              <option value="New York">New York, USA</option>
+              <option value="Los Angeles">Los Angeles, USA</option>
+              <option value="Miami">Miami, USA</option>
+              <option value="Chicago">Chicago, USA</option>
+              <option value="London">London, UK</option>
+              <option value="Prague">Prague, CZ</option>
+              <option value="Paris">Paris, France</option>
+              <option value="Berlin">Berlin, Germany</option>
+              <option value="Tokyo">Tokyo, Japan</option>
+              <option value="Sydney">Sydney, Australia</option>
+              <option value="Dubai">Dubai, UAE</option>
+              <option value="Toronto">Toronto, Canada</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Device (EXIF):</label>
+            <select class="form-select" id="spoofDevice">
+              <option value="iPhone 16 Pro">iPhone 16 Pro</option>
+              <option value="iPhone 16 Pro Max">iPhone 16 Pro Max</option>
+              <option value="iPhone 17 Pro">iPhone 17 Pro</option>
+              <option value="iPhone 17 Pro Max">iPhone 17 Pro Max</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Upload Files (photos or videos, multiple allowed):</label>
+          <input type="file" class="form-input" id="spoofFileInput" multiple accept="image/*,video/*" onchange="handleSpoofFiles(this)" style="padding:10px">
+        </div>
+
+        <div id="spoofPreview" style="margin:15px 0;min-height:50px"></div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="processSpoof()">Process & Download</button>
+          <button class="btn" onclick="markSpoofedManually()">Mark as Spoofed (already done)</button>
+        </div>
+
+        <div id="spoofStatus" style="margin-top:15px"></div>
+        <div id="spoofResults" style="margin-top:10px"></div>
+
+        <div style="margin-top:20px;padding:12px;background:#0a0a0a;border-radius:4px;border:1px solid #222">
+          <strong style="font-size:11px;color:#0f0">Photos:</strong>
+          <ul style="font-size:10px;color:#888;margin:5px 0 10px 15px;line-height:1.5">
+            <li>Strip all metadata + random crop/rotate/flip</li>
+            <li>Subtle color adjustments + fake iPhone EXIF with GPS</li>
+          </ul>
+          <strong style="font-size:11px;color:#0af">Videos:</strong>
+          <ul style="font-size:10px;color:#888;margin:5px 0 0 15px;line-height:1.5">
+            <li>Strip all metadata + trim 0.1-0.3s from start</li>
+            <li>Random crop 1-2% + 50% horizontal flip</li>
+            <li>Subtle color adjustments + re-encoded (WebM)</li>
+          </ul>
+        </div>
+      `;
+      break;
+
+    case 'viewContent':
+      const c = data;
+      title.textContent = 'Content Details';
+      document.getElementById('mBox').className = 'modal-box large';
+      const isVid = c.mediaType === 'video';
+      body.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+          <div>
+            ${isVid ?
+              `<video src="${c.spoofedUrl || c.mediaUrl}" controls style="width:100%;border-radius:4px"></video>` :
+              `<img src="${c.spoofedUrl || c.mediaUrl}" style="width:100%;border-radius:4px">`}
+          </div>
+          <div>
+            <div style="margin-bottom:10px"><strong>Account:</strong> @${c.accountUsername}</div>
+            <div style="margin-bottom:10px"><strong>Platform:</strong> ${c.platform}</div>
+            <div style="margin-bottom:10px"><strong>Type:</strong> ${c.contentType}</div>
+            <div style="margin-bottom:10px"><strong>Status:</strong> ${c.status}</div>
+            ${c.spoofed ? `<div style="margin-bottom:10px;color:#0f0"><strong>Spoofed:</strong> ✓ (${c.spoofDevice}, ${c.spoofCity})</div>` : ''}
+            ${c.posted ? `<div style="margin-bottom:10px;color:#0f0"><strong>Posted:</strong> ✓</div>` : ''}
+            ${c.description ? `<div style="margin-bottom:10px"><strong>Description:</strong><br>${c.description}</div>` : ''}
+            <div style="margin-top:20px">
+              <strong>URLs:</strong>
+              <div style="font-size:10px;word-break:break-all;margin-top:5px">
+                <div>Original: <a href="${c.mediaUrl}" target="_blank" style="color:#0af">${c.mediaUrl}</a></div>
+                ${c.spoofedUrl ? `<div>Spoofed: <a href="${c.spoofedUrl}" target="_blank" style="color:#0f0">${c.spoofedUrl}</a></div>` : ''}
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      break;
+
+  }
+
+  m.classList.add('active');
+}
+
+async function loadContentModal() {
+  const body = document.getElementById('mBody');
+  const accounts = await DB.getAll('posting_accounts');
+
+  let accountOptions = '<option value="">Select account...</option>';
+  accounts.forEach(a => {
+    accountOptions += `<option value="${a.id}">${a.platform.toUpperCase()} - @${a.username}</option>`;
+  });
+
+  body.innerHTML = `
+    <div class="grid grid-2">
+      <div class="form-group">
+        <label class="form-label">Account:</label>
+        <select class="form-select" id="contentAccount" onchange="updateContentTypes()">
+          ${accountOptions}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Content Type:</label>
+        <select class="form-select" id="contentType">
+          <option value="photo">Photo</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Media URL:</label>
+      <input type="text" class="form-input" id="contentMediaUrl" placeholder="imgur.com link for photos, vimeo.com for videos">
+      <small style="color:#666;font-size:10px">Upload photo to imgur.com, video to vimeo.com first</small>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Description (optional):</label>
+      <textarea class="form-textarea" id="contentDesc" placeholder="Notes about this content..."></textarea>
+    </div>
+    <button class="btn btn-primary" onclick="submitContent()">Submit Content</button>
+  `;
+
+  document.getElementById('modal').classList.add('active');
+}
+
+async function updateContentTypes() {
+  const accountId = document.getElementById('contentAccount').value;
+  const typeSelect = document.getElementById('contentType');
+
+  if (!accountId) {
+    typeSelect.innerHTML = '<option value="photo">Photo</option>';
+    return;
+  }
+
+  const accounts = await DB.getAll('posting_accounts');
+  const account = accounts.find(a => a.id === accountId);
+
+  if (!account) return;
+
+  const types = {
+    instagram: ['picture', 'reels', 'carousel', 'stories'],
+    tiktok: ['video', 'stories', 'photo'],
+    reddit: ['picture', 'video', 'gif'],
+    twitter: ['picture', 'video', 'text']
+  };
+
+  const platformTypes = types[account.platform] || ['photo'];
+  typeSelect.innerHTML = platformTypes.map(t =>
+    `<option value="${t}">${t.charAt(0).toUpperCase() + t.slice(1)}</option>`
+  ).join('');
+}
+
+async function loadPromptModal() {
+  const body = document.getElementById('mBody');
+  const accounts = await DB.getAll('posting_accounts');
+
+  let accountOptions = '<option value="">General (no account)</option>';
+  accounts.forEach(a => {
+    accountOptions += `<option value="${a.id}">${a.platform.toUpperCase()} - @${a.username}</option>`;
+  });
+
+  body.innerHTML = `
+    <div class="form-group">
+      <label class="form-label">Account (optional):</label>
+      <select class="form-select" id="promptAccount">
+        ${accountOptions}
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Prompt Text:</label>
+      <textarea class="form-textarea" id="promptText" style="min-height:150px;font-family:monospace" placeholder="The prompt you used..."></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Workflow/Process:</label>
+      <textarea class="form-textarea" id="promptWorkflow" placeholder="Steps you followed, settings used, etc..."></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Reference Images (imgur URLs, comma separated):</label>
+      <input type="text" class="form-input" id="promptRefs" placeholder="https://i.imgur.com/xxx.jpg, https://i.imgur.com/yyy.jpg">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Result URL (the generated content):</label>
+      <input type="text" class="form-input" id="promptResult" placeholder="https://i.imgur.com/result.jpg or vimeo link">
+    </div>
+    <button class="btn btn-primary" onclick="savePrompt()">Save Prompt</button>
+  `;
+
+  document.getElementById('modal').classList.add('active');
+}
+
+async function loadModelView(id) {
+  const model = await DB.get('models', id);
+  const checks = await DB.getAll('checklist_items', [], 'order', 'asc');
+  const contacts = await DB.getAll('model_contacts', [{ field: 'modelId', value: id }], 'createdAt', 'desc');
+
+  document.getElementById('mTitle').textContent = model.name;
+  document.getElementById('mBox').className = 'modal-box large';
+
+  let checkHtml = '';
+  checks.forEach(c => {
+    const done = model.checklist?.includes(c.id);
+    checkHtml += `<div class="task-item ${done ? 'done' : ''}" style="cursor:pointer" onclick="toggleModelCheck('${id}','${c.id}')">
+      <span style="color:${done ? '#0f0' : '#666'}">${done ? '✓' : '○'}</span>
+      <span class="task-name">${c.name}</span>
+    </div>`;
+  });
+
+  let contHtml = '';
+  contacts.slice(0, 10).forEach(c => {
+    contHtml += `<div class="contact-item">
+      <span class="contact-date">${c.date}</span> - ${c.type}: ${c.notes}
+    </div>`;
+  });
+
+  document.getElementById('mBody').innerHTML = `
+    <div class="grid grid-2">
+      <div>
+        ${model.photo ? `<img src="${model.photo}" style="width:100%;max-height:250px;object-fit:cover;border:1px solid #333">` :
+          '<div style="height:150px;background:#0a0a0a;display:flex;align-items:center;justify-content:center;color:#333">No Photo</div>'}
+        <div style="margin-top:10px;font-size:11px">
+          <div><strong>Country:</strong> ${model.country || '-'}</div>
+          <div><strong>Age:</strong> ${model.age || '-'}</div>
+        </div>
+      </div>
+      <div>
+        <div class="form-group">
+          <label class="form-label">Status:</label>
+          <select class="form-select" id="modStatus" onchange="updateModelStatus('${id}')">
+            <option ${model.status === 'potential' ? 'selected' : ''}>potential</option>
+            <option ${model.status === 'active' ? 'selected' : ''}>active</option>
+            <option ${model.status === 'inactive' ? 'selected' : ''}>inactive</option>
+          </select>
+        </div>
+        <div style="margin-top:15px">
+          <strong>Notes:</strong>
+          <div style="font-size:11px;color:#999;white-space:pre-wrap">${model.notes || '-'}</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:20px">
+      <div class="box-header">Checklist</div>
+      <div style="margin-top:10px">${checkHtml || '<div class="empty-state">No checklist items defined</div>'}</div>
+    </div>
+
+    <div style="margin-top:20px">
+      <div class="box-header">Contact Log <button class="btn btn-sm btn-primary" onclick="addContact('${id}')">Log Contact</button></div>
+      <div class="contact-log" style="margin-top:10px">${contHtml || '<div class="empty-state">No contacts logged</div>'}</div>
+    </div>
+  `;
+
+  document.getElementById('modal').classList.add('active');
+}
+
+async function toggleModelCheck(modelId, checkId) {
+  const model = await DB.get('models', modelId);
+  let checklist = model.checklist || [];
+  if (checklist.includes(checkId)) {
+    checklist = checklist.filter(c => c !== checkId);
+  } else {
+    checklist.push(checkId);
+  }
+  await DB.update('models', modelId, { checklist });
+  loadModelView(modelId);
+}
+
+async function updateModelStatus(id) {
+  const status = document.getElementById('modStatus').value;
+  await DB.update('models', id, { status });
+  loadModels();
+}
+
+function addContact(modelId) {
+  document.getElementById('mBody').innerHTML = `
+    <div class="form-group">
+      <label class="form-label">Contact Type:</label>
+      <select class="form-select" id="contType">
+        <option>DM</option>
+        <option>Telegram</option>
+        <option>WhatsApp</option>
+        <option>Call</option>
+        <option>Other</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notes:</label>
+      <textarea class="form-textarea" id="contNotes" placeholder="What was discussed?"></textarea>
+    </div>
+    <button class="btn btn-primary" onclick="saveContact('${modelId}')">Save</button>
+    <button class="btn" onclick="loadModelView('${modelId}')">Cancel</button>
+  `;
+}
+
+async function saveContact(modelId) {
+  await DB.add('model_contacts', {
+    modelId,
+    type: document.getElementById('contType').value,
+    notes: document.getElementById('contNotes').value,
+    date: new Date().toISOString().split('T')[0]
+  });
+  loadModelView(modelId);
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('active');
+  document.getElementById('mBox').className = 'modal-box';
+}
+
+document.getElementById('modal').onclick = (e) => {
+  if (e.target.id === 'modal') closeModal();
+};
+
+// ============================================
+// SAVE FUNCTIONS
+// ============================================
+async function saveKB() {
+  await DB.add('knowledge_base', {
+    question: document.getElementById('kbQ').value,
+    answer: document.getElementById('kbA').value
+  });
+  closeModal();
+  loadAI();
+}
+
+async function saveAnswer(id) {
+  const question = document.getElementById('ansQ').value.trim();
+  const answer = document.getElementById('ansA').value.trim();
+
+  if (!question || !answer) {
+    return toast('Please fill in both question and answer', 'error');
+  }
+
+  await DB.add('knowledge_base', {
+    question: question,
+    answer: answer,
+    addedFrom: 'uncertain_question',
+    originalId: id
+  });
+  await DB.update('uncertain_questions', id, { answered: true });
+
+  // Notify via Telegram that KB was updated
+  sendTelegramUpdate(`✅ Knowledge Base Updated\n\nQ: ${question}\nA: ${answer.substring(0, 200)}...`);
+
+  closeModal();
+  loadAI();
+}
+
+async function sendTelegramUpdate(text) {
+  try {
+    await fetch(`https://api.telegram.org/bot${CONFIG.telegram.botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: CONFIG.telegram.adminChatId,
+        text: text
+      })
+    });
+  } catch (e) {
+    console.error('Telegram error:', e);
+  }
+}
+
+async function sendTelegramReview(reviewId, question, aiAnswer) {
+  const text = `❓ ${question}
+
+💬 ${aiAnswer}
+
+---
+Reply with your feedback or "ok" to approve`;
+
+  try {
+    const resp = await fetch(`https://api.telegram.org/bot${CONFIG.telegram.botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: CONFIG.telegram.adminChatId,
+        text: text
+      })
+    });
+    const data = await resp.json();
+    console.log('TG sent:', data);
+
+    if (data.ok && data.result) {
+      return data.result.message_id;
+    }
+    return null;
+  } catch (e) {
+    console.error('Telegram error:', e);
+    return null;
+  }
+}
+
+// Parse Mori's feedback intelligently
+function parseFeedback(text) {
+  const feedback = {
+    recommendedAnswer: null,
+    concerns: [],
+    positives: [],
+    rawText: text
+  };
+
+  // Patterns for recommended answer
+  const answerPatterns = [
+    /(?:napsal bych|odepsal bych|rekl bych|odpoved[eě]l bych|spravna odpoved|lepsi odpoved|moje odpoved)[:\s]*(.+)/i,
+    /(?:mel bys rict|rekni|odpovez|napis)[:\s]*(.+)/i,
+    /(?:takhle|takto|tak)[:\s]*["\"]?(.+?)["\"]?$/i
+  ];
+
+  // Patterns for concerns/issues
+  const concernPatterns = [
+    /(?:spatn[eéa]|chyb[ií]|zapomn[eě]l|schazi|neni tam|nemelo by|nemel bys|problem)[:\s]*(.+)/gi,
+    /(?:ne tak|nerekej|neodpovidej|vyhni se)[:\s]*(.+)/gi
+  ];
+
+  // Patterns for positives
+  const positivePatterns = [
+    /(?:dob[rř][eéy]|spravne|libi se mi|ok je|v poradku je|super je)[:\s]*(.+)/gi,
+    /(?:tohle je ok|tohle nech|tohle je dobre)[:\s]*(.+)/gi
+  ];
+
+  // Extract recommended answer
+  for (const pattern of answerPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      feedback.recommendedAnswer = match[1].trim();
+      break;
+    }
+  }
+
+  // If no pattern matched but text is a direct answer (no concerns indicators), use whole text
+  if (!feedback.recommendedAnswer && !text.match(/spatn|chyb|zapomn|schazi|problem|nemel/i)) {
+    feedback.recommendedAnswer = text.trim();
+  }
+
+  // Extract concerns
+  for (const pattern of concernPatterns) {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      feedback.concerns.push(match[1].trim());
+    }
+  }
+
+  // Extract positives
+  for (const pattern of positivePatterns) {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      feedback.positives.push(match[1].trim());
+    }
+  }
+
+  return feedback;
+}
+
+// Check Telegram for boss feedback - runs every 5 seconds
+async function checkTelegramReplies() {
+  try {
+    // Get oldest pending review
+    const allReviews = await DB.getAll('ai_reviews');
+    const pending = allReviews.filter(r => r.status === 'pending');
+
+    if (pending.length === 0) return;
+
+    // Sort by createdAt to get oldest first
+    pending.sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
+    const oldestReview = pending[0];
+
+    // Get Telegram updates
+    const resp = await fetch(`https://api.telegram.org/bot${CONFIG.telegram.botToken}/getUpdates`);
+    const data = await resp.json();
+
+    if (!data.ok || !data.result || data.result.length === 0) return;
+
+    for (const update of data.result) {
+      const msg = update.message;
+
+      // Clear this update first
+      await fetch(`https://api.telegram.org/bot${CONFIG.telegram.botToken}/getUpdates?offset=${update.update_id + 1}`);
+
+      // Skip if no text or if it's from bot itself
+      if (!msg || !msg.text) continue;
+      if (msg.from?.is_bot) continue;
+
+      // Skip "ok" approval messages
+      const text = msg.text.trim();
+      if (text.toLowerCase() === 'ok') {
+        await DB.set('ai_reviews', oldestReview.id, { status: 'approved' });
+        await sendTelegramUpdate('✅ Approved');
+        loadAI();
+        continue;
+      }
+
+      // This is feedback from boss - save it!
+      console.log('SAVING FEEDBACK:', text);
+
+      await DB.add('knowledge_base', {
+        type: 'training',
+        keywords: oldestReview.question.toLowerCase(),
+        question: oldestReview.question,
+        aiAnswer: oldestReview.aiAnswer,
+        moriFeedback: text,
+        content: `Q: ${oldestReview.question}\nAI: ${oldestReview.aiAnswer}\nBOSS: ${text}`,
+        source: 'telegram',
+        createdAt: new Date()
+      });
+
+      await DB.set('ai_reviews', oldestReview.id, { status: 'trained' });
+      await sendTelegramUpdate('✅ Saved! AI is learning.');
+      loadAI();
+    }
+  } catch (e) {
+    console.error('TG error:', e);
+  }
+}
+
+// Check for Telegram replies every 5 seconds - fully automatic
+let telegramCheckInterval = null;
+function startTelegramCheck() {
+  if (telegramCheckInterval) return;
+  checkTelegramReplies(); // Check immediately
+  telegramCheckInterval = setInterval(checkTelegramReplies, 5000); // Every 5 sec
+}
+function stopTelegramCheck() {
+  if (telegramCheckInterval) {
+    clearInterval(telegramCheckInterval);
+    telegramCheckInterval = null;
+  }
+}
+
+// Update AI stats display
+async function updateAIStats() {
+  try {
+    const chatCount = chatMessages.length;
+    const allKb = await DB.getKnowledge();
+    const trainingCount = allKb.filter(k => k.type === 'training' || k.source === 'telegram_training').length;
+    const reviews = await DB.getAll('ai_reviews');
+    const pendingCount = reviews.filter(r => r.status === 'pending').length;
+
+    document.getElementById('statChat').textContent = chatCount;
+    document.getElementById('statTraining').textContent = trainingCount;
+    document.getElementById('statPending').textContent = pendingCount;
+
+    // Color pending if there are any
+    document.getElementById('statPending').style.color = pendingCount > 0 ? '#ff0' : '#0f0';
+  } catch (e) {
+    console.error('Stats error:', e);
+  }
+}
+
+// Debug Telegram - manual check with full output
+async function debugTelegram() {
+  toast('Kontroluji Telegram...', 'info');
+
+  try {
+    // Get pending reviews
+    const reviews = await DB.getAll('ai_reviews');
+    const pending = reviews.filter(r => r.status === 'pending');
+
+    console.log('=== TELEGRAM DEBUG ===');
+    console.log('All reviews:', reviews);
+    console.log('Pending reviews:', pending);
+    console.log('Pending with telegramMsgId:', pending.filter(r => r.telegramMsgId));
+
+    if (pending.length === 0) {
+      toast('Žádné pending reviews', 'info');
+      return;
+    }
+
+    // Get Telegram updates
+    const resp = await fetch(`https://api.telegram.org/bot${CONFIG.telegram.botToken}/getUpdates`);
+    const data = await resp.json();
+
+    console.log('Telegram response:', data);
+
+    if (!data.ok) {
+      toast('Telegram API chyba: ' + JSON.stringify(data), 'error');
+      return;
+    }
+
+    if (!data.result || data.result.length === 0) {
+      toast('Žádné nové zprávy na Telegramu', 'info');
+      return;
+    }
+
+    // Show updates
+    let found = 0;
+    for (const update of data.result) {
+      const msg = update.message;
+      if (!msg) continue;
+
+      console.log('Update:', update.update_id, 'Message:', msg.text?.substring(0, 50));
+
+      if (msg.reply_to_message) {
+        console.log('Reply to message_id:', msg.reply_to_message.message_id);
+        const review = pending.find(r => r.telegramMsgId === msg.reply_to_message.message_id);
+        if (review) {
+          console.log('MATCH FOUND! Review:', review.id);
+          found++;
+        }
+      }
+    }
+
+    if (found > 0) {
+      toast(`Nalezeno ${found} odpovědí, zpracovávám...`, 'success');
+      await checkTelegramReplies();
+      await updateAIStats();
+      loadAI();
+    } else {
+      toast(`${data.result.length} zpráv, ale žádná odpověď na pending reviews`, 'info');
+    }
+
+  } catch (e) {
+    console.error('Debug Telegram error:', e);
+    toast('Chyba: ' + e.message, 'error');
+  }
+}
+
+async function saveAcc(type) {
+  await DB.add('accounts', {
+    type,
+    username: document.getElementById('accUser').value,
+    location: document.getElementById('accLoc').value,
+    proxyStatus: document.getElementById('accProxy').value,
+    healthy: true,
+    userId: userId
+  });
+  closeModal();
+  loadOutreach();
+}
+
+async function saveScript(type) {
+  const data = {
+    type,
+    text: document.getElementById('scriptTxt').value
+  };
+  if (type === 'script') {
+    data.title = document.getElementById('scriptTitle')?.value || '';
+  } else {
+    data.platform = document.getElementById('scriptPlat')?.value || '';
+  }
+  await DB.add('scripts', data);
+  closeModal();
+  loadOutreach();
+}
+
+async function saveModel() {
+  await DB.add('models', {
+    name: document.getElementById('modName').value,
+    photo: document.getElementById('modPhoto').value,
+    country: document.getElementById('modCountry').value,
+    age: parseInt(document.getElementById('modAge').value) || null,
+    notes: document.getElementById('modNotes').value,
+    status: 'potential',
+    checklist: []
+  });
+  closeModal();
+  loadModels();
+}
+
+function updatePostTypes(typesCounts = null) {
+  const platform = document.getElementById('postPlat').value;
+  const container = document.getElementById('postTypesContainer');
+
+  const types = {
+    instagram: [
+      { value: 'picture', label: 'Picture' },
+      { value: 'reels', label: 'Reels' },
+      { value: 'carousel', label: 'Carousel' },
+      { value: 'stories', label: 'Stories' }
+    ],
+    tiktok: [
+      { value: 'video', label: 'Video' },
+      { value: 'stories', label: 'Stories' },
+      { value: 'photo', label: 'Photo' }
+    ],
+    reddit: [
+      { value: 'picture', label: 'Picture' },
+      { value: 'video', label: 'Video' },
+      { value: 'gif', label: 'GIF' }
+    ],
+    twitter: [
+      { value: 'picture', label: 'Picture' },
+      { value: 'video', label: 'Video' },
+      { value: 'text', label: 'Text' }
+    ]
+  };
+
+  const platformTypes = types[platform] || [];
+  const counts = typesCounts || {};
+
+  container.innerHTML = platformTypes.map(t => `
+    <div class="type-count-row">
+      <span class="type-label">${t.label}</span>
+      <input type="number" class="form-input type-count-input" data-type="${t.value}" value="${counts[t.value] || 0}" min="0" max="50">
+      <span class="type-unit">/day</span>
+    </div>
+  `).join('');
+}
+
+async function savePosting() {
+  const editId = document.getElementById('postEditId').value;
+
+  if (!document.getElementById('postUser').value.trim()) {
+    return toast('Enter username', 'error');
+  }
+
+  const typesCounts = {};
+  document.querySelectorAll('.type-count-input').forEach(input => {
+    const val = parseInt(input.value) || 0;
+    if (val > 0) typesCounts[input.dataset.type] = val;
+  });
+
+  const data = {
+    platform: document.getElementById('postPlat').value,
+    username: document.getElementById('postUser').value.trim(),
+    typesCounts: typesCounts,
+    notes: document.getElementById('postNotes').value.trim()
+  };
+
+  if (editId) {
+    await DB.update('posting_accounts', editId, data);
+    toast('Account updated', 'success');
+  } else {
+    await DB.add('posting_accounts', data);
+    toast('Account added', 'success');
+  }
+
+  closeModal();
+  loadPosting();
+}
+
+async function editPosting(id) {
+  const acc = await DB.get('posting_accounts', id);
+  if (acc) modal('posting', acc);
+}
+
+async function savePreset() {
+  const presets = await DB.getTaskPresets();
+  await DB.add('task_presets', {
+    name: document.getElementById('presetName').value,
+    guide: document.getElementById('presetGuide').value,
+    images: document.getElementById('presetImages').value,
+    video: document.getElementById('presetVideo').value,
+    order: presets.length
+  });
+  closeModal();
+  loadSettings();
+}
+
+async function editPreset(id) {
+  const p = await DB.get('task_presets', id);
+  modal('taskPreset');
+  setTimeout(() => {
+    document.getElementById('presetName').value = p.name || '';
+    document.getElementById('presetGuide').value = p.guide || '';
+    document.getElementById('presetImages').value = p.images || '';
+    document.getElementById('presetVideo').value = p.video || '';
+    // Change save button to update
+    document.querySelector('#mBody button').onclick = () => updatePreset(id);
+    document.querySelector('#mBody button').textContent = 'Update Task';
+  }, 100);
+}
+
+async function updatePreset(id) {
+  await DB.update('task_presets', id, {
+    name: document.getElementById('presetName').value,
+    guide: document.getElementById('presetGuide').value,
+    images: document.getElementById('presetImages').value,
+    video: document.getElementById('presetVideo').value
+  });
+  closeModal();
+  loadSettings();
+}
+
+async function saveWallet() {
+  const type = document.getElementById('walletType').value;
+  const address = document.getElementById('walletAddress').value.trim();
+  const label = document.getElementById('walletLabel').value.trim();
+
+  if (!address) {
+    return toast('Enter wallet address', 'error');
+  }
+
+  await DB.add('wallets', {
+    userId: userId,
+    type: type,
+    address: address,
+    label: label || null
+  });
+
+  closeModal();
+  toast('Wallet added', 'success');
+  loadWallets();
+}
+
+// ============================================
+// TOAST & CONFIRM DIALOG
+// ============================================
+function toast(message, type = 'success', duration = 3000) {
+  const container = document.getElementById('toastContainer');
+  if (!container) return;
+  const icons = { success: '✓', error: '✗', warning: '⚠' };
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.innerHTML = `<span class="toast-icon">${icons[type] || ''}</span><span class="toast-message">${message}</span><button class="toast-close" onclick="this.parentElement.remove()">×</button>`;
+  container.appendChild(t);
+  setTimeout(() => { t.classList.add('hiding'); setTimeout(() => t.remove(), 300); }, duration);
+}
+
+function confirmDialog(message) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    overlay.innerHTML = `
+      <div class="confirm-box">
+        <div class="confirm-message">${message}</div>
+        <div class="confirm-buttons">
+          <button class="btn btn-primary confirm-yes">Yes</button>
+          <button class="btn confirm-no">No</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    overlay.querySelector('.confirm-yes').onclick = () => { overlay.remove(); resolve(true); };
+    overlay.querySelector('.confirm-no').onclick = () => { overlay.remove(); resolve(false); };
+    overlay.onclick = (e) => { if (e.target === overlay) { overlay.remove(); resolve(false); } };
+  });
+}
+
+// ============================================
+// INIT
+// ============================================
+loadDaily();
