@@ -1407,41 +1407,39 @@ async function loadOutseeker() {
     const totalOut = usaOut + espOut;
     const logId = `${l.userId}_${l.date}`;
 
-    osHtml += `<div class="list-item" style="${isToday ? 'background:#001a00;border-left:3px solid #0f0' : ''}">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <span style="font-weight:${isToday ? 'bold' : 'normal'};color:${isToday ? '#0f0' : '#eee'};font-size:14px">${l.date}${isToday ? ' (Today)' : ''}</span>
-        <div style="display:flex;gap:5px">
+    osHtml += `<div class="list-item" style="${isToday ? 'background:#001a00;border-left:3px solid #0f0' : ''};padding:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:15px">
+        <div style="flex:0 0 auto">
+          <div style="font-weight:${isToday ? 'bold' : 'normal'};color:${isToday ? '#0f0' : '#eee'};font-size:13px;margin-bottom:2px">${l.date}</div>
+          ${isToday ? '<div style="font-size:9px;color:#0f0">TODAY</div>' : ''}
+        </div>
+        <div style="flex:1;display:flex;gap:8px;align-items:center;font-size:11px">
+          <div style="padding:4px 8px;background:#0a0a0a;border:1px solid #333;border-radius:2px">
+            <span style="color:#666">Running:</span> <strong style="color:#0f0">${l.activeAccounts || 0}</strong>
+          </div>
+          <div style="padding:4px 8px;background:#0a0a0a;border:1px solid #333;border-radius:2px">
+            <span style="color:#666">USA:</span> <strong style="color:#4af">${l.usaRunning || 0}</strong>
+          </div>
+          <div style="padding:4px 8px;background:#0a0a0a;border:1px solid #333;border-radius:2px">
+            <span style="color:#666">ESP:</span> <strong style="color:#f4a">${l.espRunning || 0}</strong>
+          </div>
+          <div style="width:1px;height:20px;background:#333"></div>
+          <div style="padding:4px 8px;background:#0a0a0a;border:1px solid #333;border-radius:2px">
+            <span style="color:#666">Out USA:</span> <strong style="color:#4af">${usaOut}</strong>
+          </div>
+          <div style="padding:4px 8px;background:#0a0a0a;border:1px solid #333;border-radius:2px">
+            <span style="color:#666">Out ESP:</span> <strong style="color:#f4a">${espOut}</strong>
+          </div>
+          <div style="padding:4px 8px;background:#0a0a0a;border:1px solid #333;border-radius:2px">
+            <span style="color:#666">Total:</span> <strong style="color:#ff0">${totalOut}</strong>
+          </div>
+        </div>
+        <div style="flex:0 0 auto;display:flex;gap:5px">
           <button class="btn btn-sm" style="font-size:10px;padding:2px 8px" onclick="editOutseeker('${logId}')">Edit</button>
           <button class="btn btn-sm" style="font-size:10px;padding:2px 8px" onclick="delOutseeker('${logId}')">Delete</button>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:8px">
-        <div style="background:#0a0a0a;padding:8px;border-radius:3px;border:1px solid #222">
-          <div style="font-size:9px;color:#666;text-transform:uppercase;margin-bottom:3px">Accounts Running</div>
-          <div style="font-size:16px;color:#0f0;font-weight:bold">${l.activeAccounts || 0}</div>
-        </div>
-        <div style="background:#0a0a0a;padding:8px;border-radius:3px;border:1px solid #222">
-          <div style="font-size:9px;color:#666;text-transform:uppercase;margin-bottom:3px">Running USA</div>
-          <div style="font-size:16px;color:#4af;font-weight:bold">${l.usaRunning || 0}</div>
-        </div>
-        <div style="background:#0a0a0a;padding:8px;border-radius:3px;border:1px solid #222">
-          <div style="font-size:9px;color:#666;text-transform:uppercase;margin-bottom:3px">Running ESP</div>
-          <div style="font-size:16px;color:#f4a;font-weight:bold">${l.espRunning || 0}</div>
-        </div>
-        <div style="background:#0a0a0a;padding:8px;border-radius:3px;border:1px solid #222">
-          <div style="font-size:9px;color:#666;text-transform:uppercase;margin-bottom:3px">Outreached USA</div>
-          <div style="font-size:16px;color:#4af;font-weight:bold">${usaOut}</div>
-        </div>
-        <div style="background:#0a0a0a;padding:8px;border-radius:3px;border:1px solid #222">
-          <div style="font-size:9px;color:#666;text-transform:uppercase;margin-bottom:3px">Outreached ESP</div>
-          <div style="font-size:16px;color:#f4a;font-weight:bold">${espOut}</div>
-        </div>
-        <div style="background:#0a0a0a;padding:8px;border-radius:3px;border:1px solid #222">
-          <div style="font-size:9px;color:#666;text-transform:uppercase;margin-bottom:3px">Total Outreached</div>
-          <div style="font-size:16px;color:#ff0;font-weight:bold">${totalOut}</div>
-        </div>
-      </div>
-      ${l.notes ? `<div style="padding:8px;background:#0a0a0a;border:1px solid #222;border-radius:3px;font-size:11px;color:#999;margin-top:8px"><strong style="color:#666;font-size:9px;text-transform:uppercase;display:block;margin-bottom:4px">Notes:</strong>${l.notes}</div>` : ''}
+      ${l.notes ? `<div style="margin-top:8px;padding:6px 8px;background:#0a0a0a;border:1px solid #222;border-radius:2px;font-size:10px;color:#999"><strong style="color:#666;font-size:9px;margin-right:5px">Notes:</strong>${l.notes}</div>` : ''}
     </div>`;
   });
   document.getElementById('osLog').innerHTML = osHtml || '<div class="empty-state">No outseeker logs</div>';
