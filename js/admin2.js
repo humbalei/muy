@@ -5026,7 +5026,7 @@ async function saveLeadCollection() {
     toast('Collection created!', 'success');
   }
 
-  closeModal();
+  cancelCollectionForm();
   loadLeads();
 }
 
