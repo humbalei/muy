@@ -2444,73 +2444,146 @@ async function modal(type, data) {
       title.textContent = `Add ${data.charAt(0).toUpperCase() + data.slice(1)} Account`;
       if (data === 'webcam') {
         body.innerHTML = `
-          <div class="form-group">
-            <label class="form-label">Username:</label>
-            <input type="text" class="form-input" id="accUser">
+          <div class="grid grid-2">
+            <div class="form-group">
+              <label class="form-label">Username:</label>
+              <input type="text" class="form-input" id="accUser" placeholder="Username">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Site:</label>
+              <input type="text" class="form-input" id="accSite" placeholder="e.g. Chaturbate, StripChat">
+            </div>
           </div>
-          <div class="form-group">
-            <label class="form-label">Site:</label>
-            <input type="text" class="form-input" id="accSite" placeholder="e.g. Chaturbate, StripChat">
+          <div class="grid grid-2">
+            <div class="form-group">
+              <label class="form-label">Location:</label>
+              <select class="form-select" id="accLoc">
+                <option>Phone</option>
+                <option>PC</option>
+                <option>AdsPower</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Device Name:</label>
+              <input type="text" class="form-input" id="accDevice" placeholder="e.g. iPhone 13, PC-Office, AdsPower #5">
+            </div>
           </div>
-          <div class="form-group">
-            <label class="form-label">Location:</label>
-            <select class="form-select" id="accLoc">
-              <option>Phone</option>
-              <option>PC</option>
-              <option>AdsPower</option>
-            </select>
+          <div class="grid grid-2">
+            <div class="form-group">
+              <label class="form-label">Account Status:</label>
+              <select class="form-select" id="accHealthy">
+                <option value="true">Active</option>
+                <option value="false">Inactive</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Proxy Status:</label>
+              <select class="form-select" id="accProxyStat">
+                <option>Live</option>
+                <option>Expired</option>
+                <option>None</option>
+              </select>
+            </div>
           </div>
-          <div class="form-group">
-            <label class="form-label">Status:</label>
-            <select class="form-select" id="accHealthy">
-              <option value="true">Active</option>
-              <option value="false">Inactive</option>
-            </select>
-          </div>
-          <button class="btn btn-primary" onclick="saveOutreachAcc('webcam')">Save</button>
-        `;
-      } else {
-        body.innerHTML = `
-          <div class="form-group">
-            <label class="form-label">Username:</label>
-            <input type="text" class="form-input" id="accUser">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Location:</label>
-            <select class="form-select" id="accLoc">
-              <option>Phone</option>
-              <option>PC</option>
-              <option>AdsPower</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Status:</label>
-            <select class="form-select" id="accHealthy">
-              <option value="true">Healthy</option>
-              <option value="false">Expired</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Proxy Status:</label>
-            <select class="form-select" id="accProxyStat">
-              <option>Live</option>
-              <option>Expired</option>
-              <option>None</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Proxy Type:</label>
-            <select class="form-select" id="accProxyType">
-              <option>HTTPS</option>
-              <option>SOCKS5</option>
-              <option>None</option>
-            </select>
+          <div class="grid grid-2">
+            <div class="form-group">
+              <label class="form-label">Proxy Type:</label>
+              <select class="form-select" id="accProxyType">
+                <option>HTTPS</option>
+                <option>SOCKS5</option>
+                <option>None</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Proxy Expiration:</label>
+              <input type="date" class="form-input" id="accProxyExp">
+            </div>
           </div>
           <div class="form-group">
             <label class="form-label">Proxy Details:</label>
             <input type="text" class="form-input" id="accProxyDetails" placeholder="IP:Port:User:Pass">
           </div>
-          <button class="btn btn-primary" onclick="saveOutreachAcc('${data}')">Save</button>
+          <div class="form-group">
+            <label class="form-label">Outreach Method:</label>
+            <textarea class="form-textarea" id="accMethod" style="min-height:80px" placeholder="Jak přesně outreachovat na tomto webcam site..."></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Notes:</label>
+            <textarea class="form-textarea" id="accNotes" style="min-height:60px" placeholder="Interní poznámky..."></textarea>
+          </div>
+          <button class="btn btn-primary" onclick="saveOutreachAcc('webcam')">Save Account</button>
+        `;
+      } else {
+        // Instagram or Twitter
+        body.innerHTML = `
+          <div class="grid grid-2">
+            <div class="form-group">
+              <label class="form-label">Username:</label>
+              <input type="text" class="form-input" id="accUser" placeholder="@username">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Account Status:</label>
+              <select class="form-select" id="accHealthy">
+                <option value="true">Healthy</option>
+                <option value="false">Expired</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid grid-2">
+            <div class="form-group">
+              <label class="form-label">Location:</label>
+              <select class="form-select" id="accLoc">
+                <option>Phone</option>
+                <option>PC</option>
+                <option>AdsPower</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Device Name:</label>
+              <input type="text" class="form-input" id="accDevice" placeholder="e.g. iPhone 13, PC-Office, AdsPower #5">
+            </div>
+          </div>
+          <div class="grid grid-2">
+            <div class="form-group">
+              <label class="form-label">Warmup Status:</label>
+              <select class="form-select" id="accWarmup">
+                <option>Not Started</option>
+                <option>In Progress</option>
+                <option>Complete</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Proxy Status:</label>
+              <select class="form-select" id="accProxyStat">
+                <option>Live</option>
+                <option>Expired</option>
+                <option>None</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid grid-2">
+            <div class="form-group">
+              <label class="form-label">Proxy Type:</label>
+              <select class="form-select" id="accProxyType">
+                <option>HTTPS</option>
+                <option>SOCKS5</option>
+                <option>None</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Proxy Expiration:</label>
+              <input type="date" class="form-input" id="accProxyExp">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Proxy Details:</label>
+            <input type="text" class="form-input" id="accProxyDetails" placeholder="IP:Port:User:Pass">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Notes:</label>
+            <textarea class="form-textarea" id="accNotes" style="min-height:60px" placeholder="Interní poznámky..."></textarea>
+          </div>
+          <button class="btn btn-primary" onclick="saveOutreachAcc('${data}')">Save Account</button>
         `;
       }
       break;
@@ -3407,47 +3480,74 @@ async function saveAcc(type) {
 }
 
 async function saveOutreachAcc(type) {
+  const username = document.getElementById('accUser')?.value?.trim();
+  if (!username) {
+    toast('Username is required', 'error');
+    return;
+  }
+
   const data = {
     type,
     userId: userId,
-    username: document.getElementById('accUser').value,
-    location: document.getElementById('accLoc').value,
-    healthy: document.getElementById('accHealthy').value === 'true'
+    username: username,
+    location: document.getElementById('accLoc')?.value || 'Phone',
+    deviceName: document.getElementById('accDevice')?.value?.trim() || '',
+    healthy: document.getElementById('accHealthy')?.value === 'true',
+    proxyStatus: document.getElementById('accProxyStat')?.value || 'None',
+    proxyType: document.getElementById('accProxyType')?.value || 'None',
+    proxyDetails: document.getElementById('accProxyDetails')?.value?.trim() || '',
+    proxyExpiration: document.getElementById('accProxyExp')?.value || '',
+    notes: document.getElementById('accNotes')?.value?.trim() || ''
   };
 
   if (type === 'webcam') {
-    data.site = document.getElementById('accSite').value;
+    data.site = document.getElementById('accSite')?.value?.trim() || '';
+    data.outreachMethod = document.getElementById('accMethod')?.value?.trim() || '';
   } else {
-    data.proxyStatus = document.getElementById('accProxyStat').value;
-    data.proxyType = document.getElementById('accProxyType').value;
-    data.proxyDetails = document.getElementById('accProxyDetails').value;
+    data.warmupStatus = document.getElementById('accWarmup')?.value || 'Not Started';
   }
 
   await DB.add('accounts', data);
   closeModal();
-  toast('Account added!', 'success');
+  toast('Account added successfully!', 'success');
   loadOutreachAccounts();
 }
 
 async function updateOutreachAcc(type) {
-  const id = document.getElementById('editAccId').value;
+  const id = document.getElementById('editAccId')?.value;
+  if (!id) {
+    toast('Account ID missing', 'error');
+    return;
+  }
+
+  const username = document.getElementById('accUser')?.value?.trim();
+  if (!username) {
+    toast('Username is required', 'error');
+    return;
+  }
+
   const data = {
-    username: document.getElementById('accUser').value,
-    location: document.getElementById('accLoc').value,
-    healthy: document.getElementById('accHealthy').value === 'true'
+    username: username,
+    location: document.getElementById('accLoc')?.value || 'Phone',
+    deviceName: document.getElementById('accDevice')?.value?.trim() || '',
+    healthy: document.getElementById('accHealthy')?.value === 'true',
+    proxyStatus: document.getElementById('accProxyStat')?.value || 'None',
+    proxyType: document.getElementById('accProxyType')?.value || 'None',
+    proxyDetails: document.getElementById('accProxyDetails')?.value?.trim() || '',
+    proxyExpiration: document.getElementById('accProxyExp')?.value || '',
+    notes: document.getElementById('accNotes')?.value?.trim() || ''
   };
 
   if (type === 'webcam') {
-    data.site = document.getElementById('accSite').value;
+    data.site = document.getElementById('accSite')?.value?.trim() || '';
+    data.outreachMethod = document.getElementById('accMethod')?.value?.trim() || '';
   } else {
-    data.proxyStatus = document.getElementById('accProxyStat').value;
-    data.proxyType = document.getElementById('accProxyType').value;
-    data.proxyDetails = document.getElementById('accProxyDetails').value;
+    data.warmupStatus = document.getElementById('accWarmup')?.value || 'Not Started';
   }
 
   await DB.update('accounts', id, data);
   closeModal();
-  toast('Account updated!', 'success');
+  toast('Account updated successfully!', 'success');
   loadOutreachAccounts();
 }
 
