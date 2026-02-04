@@ -1,33 +1,9 @@
-// Service Worker for TEAM Management App
-const CACHE_NAME = 'team-app-v1';
-const urlsToCache = [
-  '/',
-  '/index.html',
-  '/admin.html',
-  '/assistant.html',
-  '/css/style.css',
-  '/js/config.js',
-  '/js/db.js',
-  '/js/app.js',
-  '/js/admin2.js',
-  '/manifest.json',
-  '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png'
-];
+// Service Worker for TEAM Management App - MINIMAL VERSION
+const CACHE_NAME = 'team-app-v2-minimal';
 
-// Install event - cache resources
+// Install event - skip caching for now
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing service worker...');
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('[SW] Caching app shell');
-        return cache.addAll(urlsToCache.map(url => new Request(url, {cache: 'reload'})));
-      })
-      .catch((err) => {
-        console.log('[SW] Cache failed:', err);
-      })
-  );
+  console.log('[SW] Installing service worker v2 (minimal)...');
   self.skipWaiting();
 });
 
@@ -49,46 +25,27 @@ self.addEventListener('activate', (event) => {
   return self.clients.claim();
 });
 
-// Fetch event - serve from cache, fallback to network
+// Fetch event - PASS THROUGH (no caching)
 self.addEventListener('fetch', (event) => {
-  // Skip cross-origin requests
-  if (!event.request.url.startsWith(self.location.origin)) {
-    return;
-  }
-
+  // Just fetch from network, no caching
+  // This prevents caching issues and "can't open page" errors
   event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        // Cache hit - return response
-        if (response) {
-          console.log('[SW] Serving from cache:', event.request.url);
-          return response;
-        }
-
-        // Clone the request
-        const fetchRequest = event.request.clone();
-
-        return fetch(fetchRequest).then((response) => {
-          // Check if valid response
-          if (!response || response.status !== 200 || response.type !== 'basic') {
-            return response;
-          }
-
-          // Clone the response
-          const responseToCache = response.clone();
-
-          caches.open(CACHE_NAME)
-            .then((cache) => {
-              cache.put(event.request, responseToCache);
-            });
-
-          return response;
-        }).catch((err) => {
-          console.log('[SW] Fetch failed:', err);
-          // Return offline page or cached version
-          return caches.match('/index.html');
+    fetch(event.request).catch((err) => {
+      console.log('[SW] Fetch failed:', event.request.url, err);
+      // If it's a navigation request, try to serve index.html from cache
+      if (event.request.mode === 'navigate') {
+        return caches.match('/index.html').then(response => {
+          return response || new Response('Offline - please check your connection', {
+            status: 503,
+            statusText: 'Service Unavailable',
+            headers: new Headers({
+              'Content-Type': 'text/plain'
+            })
+          });
         });
-      })
+      }
+      throw err;
+    })
   );
 });
 
