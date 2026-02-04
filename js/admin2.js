@@ -2080,13 +2080,13 @@ function renderModels(models) {
     }
 
     html += `<div class="model-card" style="cursor:default;padding:12px">
-      <div class="model-card-img" onclick="modal('model',${JSON.stringify(m).replace(/"/g, '&quot;')})" style="cursor:pointer">
+      <div class="model-card-img" onclick="modal('modelView','${m.id}')" style="cursor:pointer">
         ${m.photo ? `<img src="${m.photo}" alt="${m.name}">` : '<div style="display:flex;align-items:center;justify-content:center;height:100%;background:#222;color:#666">No Photo</div>'}
       </div>
       <div class="model-card-body">
         <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px">
           <div>
-            <div class="model-card-name" onclick="modal('model',${JSON.stringify(m).replace(/"/g, '&quot;')})" style="cursor:pointer">${m.name}</div>
+            <div class="model-card-name" onclick="modal('modelView','${m.id}')" style="cursor:pointer">${m.name}</div>
             <div style="font-size:11px;color:#999">${m.country || '-'}, ${m.age || '-'}y</div>
           </div>
           <div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:flex-end;max-width:50%">
@@ -2148,7 +2148,7 @@ function renderModels(models) {
           <button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px" onclick="modal('model',${JSON.stringify(m).replace(/"/g, '&quot;')})">Edit</button>
           ${m.status === 'potential' ?
             `<button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px;background:#0f0;color:#000" onclick="moveToActive('${m.id}')">Active</button>` :
-            `<button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px" onclick="viewCommHistory('${m.id}')">History</button>`
+            `<button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px" onclick="modal('modelView','${m.id}')">View</button>`
           }
         </div>
       </div>
@@ -3946,66 +3946,128 @@ async function loadPromptModal() {
 
 async function loadModelView(id) {
   const model = await DB.get('models', id);
-  const checks = await DB.getAll('checklist_items', [], 'order', 'asc');
-  const contacts = await DB.getAll('model_contacts', [{ field: 'modelId', value: id }], 'createdAt', 'desc');
+  if (!model) {
+    toast('Model not found', 'error');
+    return;
+  }
 
-  document.getElementById('mTitle').textContent = model.name;
+  const m = document.getElementById('modal');
+  const title = document.getElementById('modalTitle');
+  const body = document.getElementById('modalBody');
+
+  title.textContent = `${model.name} - Overview`;
   document.getElementById('mBox').className = 'modal-box large';
 
-  let checkHtml = '';
-  checks.forEach(c => {
-    const done = model.checklist?.includes(c.id);
-    checkHtml += `<div class="task-item ${done ? 'done' : ''}" style="cursor:pointer" onclick="toggleModelCheck('${id}','${c.id}')">
-      <span style="color:${done ? '#0f0' : '#666'}">${done ? '✓' : '○'}</span>
-      <span class="task-name">${c.name}</span>
-    </div>`;
-  });
+  const today = new Date().toISOString().split('T')[0];
+  const lastComm = model.lastCommunication ? new Date(model.lastCommunication).toISOString().split('T')[0] : null;
+  const daysSince = lastComm ? Math.floor((new Date(today) - new Date(lastComm)) / (1000 * 60 * 60 * 24)) : null;
+  const streak = model.communicationStreak || 0;
+  const commNotes = model.communicationNotes || [];
 
-  let contHtml = '';
-  contacts.slice(0, 10).forEach(c => {
-    contHtml += `<div class="contact-item">
-      <span class="contact-date">${c.date}</span> - ${c.type}: ${c.notes}
-    </div>`;
-  });
-
-  document.getElementById('mBody').innerHTML = `
-    <div class="grid grid-2">
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:200px 1fr;gap:20px;margin-bottom:20px">
       <div>
-        ${model.photo ? `<img src="${model.photo}" style="width:100%;max-height:250px;object-fit:cover;border:1px solid #333">` :
-          '<div style="height:150px;background:#0a0a0a;display:flex;align-items:center;justify-content:center;color:#333">No Photo</div>'}
-        <div style="margin-top:10px;font-size:11px">
-          <div><strong>Country:</strong> ${model.country || '-'}</div>
-          <div><strong>Age:</strong> ${model.age || '-'}</div>
-        </div>
+        ${model.photo ? `<img src="${model.photo}" style="width:100%;border-radius:4px;border:1px solid #333">` :
+          '<div style="height:200px;background:#0a0a0a;display:flex;align-items:center;justify-content:center;color:#666;border-radius:4px">No Photo</div>'}
       </div>
       <div>
-        <div class="form-group">
-          <label class="form-label">Status:</label>
-          <select class="form-select" id="modStatus" onchange="updateModelStatus('${id}')">
-            <option ${model.status === 'potential' ? 'selected' : ''}>potential</option>
-            <option ${model.status === 'active' ? 'selected' : ''}>active</option>
-            <option ${model.status === 'inactive' ? 'selected' : ''}>inactive</option>
-          </select>
+        <h3 style="color:#0f0;margin-bottom:10px">${model.name}</h3>
+        <div style="display:flex;gap:10px;margin-bottom:10px">
+          <span style="background:${model.status === 'active' ? '#0f0' : '#666'};color:#000;padding:4px 12px;border-radius:3px;font-size:11px;font-weight:bold">${model.status.toUpperCase()}</span>
         </div>
-        <div style="margin-top:15px">
-          <strong>Notes:</strong>
-          <div style="font-size:11px;color:#999;white-space:pre-wrap">${model.notes || '-'}</div>
+        <div style="font-size:12px;line-height:1.8">
+          <div><strong style="color:#999">Country:</strong> ${model.country || '-'}</div>
+          <div><strong style="color:#999">Age:</strong> ${model.age || '-'}</div>
+          <div><strong style="color:#999">Last Contact:</strong> <span style="color:${daysSince === null ? '#f00' : (daysSince === 0 ? '#0f0' : '#ff0')}">${daysSince === null ? 'Never' : (daysSince === 0 ? 'Today' : `${daysSince} days ago`)}</span></div>
+          ${streak > 0 ? `<div><strong style="color:#999">Streak:</strong> <span style="color:#ff0">🔥 ${streak} days</span></div>` : ''}
         </div>
       </div>
     </div>
 
-    <div style="margin-top:20px">
-      <div class="box-header">Checklist</div>
-      <div style="margin-top:10px">${checkHtml || '<div class="empty-state">No checklist items defined</div>'}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px">
+      <div style="padding:12px;background:#0a0a0a;border:1px solid #333;border-radius:4px">
+        <h4 style="color:#0f0;margin-bottom:10px;font-size:13px">📞 Contact Status</h4>
+        <div style="display:flex;flex-wrap:wrap;gap:5px">
+          ${model.onAssistantTelegram ? '<span style="background:#0088cc;color:#fff;padding:3px 8px;border-radius:2px;font-size:10px">My TG</span>' : ''}
+          ${model.onAssistantWhatsApp ? '<span style="background:#25D366;color:#fff;padding:3px 8px;border-radius:2px;font-size:10px">My WA</span>' : ''}
+          ${model.onBossTelegram ? '<span style="background:#0088cc;color:#fff;padding:3px 8px;border-radius:2px;font-size:10px">Boss TG</span>' : ''}
+          ${model.onBossWhatsApp ? '<span style="background:#25D366;color:#fff;padding:3px 8px;border-radius:2px;font-size:10px">Boss WA</span>' : ''}
+          ${!model.onAssistantTelegram && !model.onAssistantWhatsApp && !model.onBossTelegram && !model.onBossWhatsApp ? '<span style="color:#666;font-size:11px">No contacts</span>' : ''}
+        </div>
+      </div>
+
+      <div style="padding:12px;background:#0a0a0a;border:1px solid #333;border-radius:4px">
+        <h4 style="color:#0f0;margin-bottom:10px;font-size:13px">💼 Work Type</h4>
+        <div style="font-size:11px;color:#ccc">
+          ${model.canDoWebcams ? '<div>✅ Can do Webcams</div>' : '<div style="color:#666">❌ No Webcams</div>'}
+          ${model.canDoContent ? '<div>✅ Can do Content/OF</div>' : '<div style="color:#666">❌ No Content</div>'}
+        </div>
+      </div>
     </div>
 
-    <div style="margin-top:20px">
-      <div class="box-header">Contact Log <button class="btn btn-sm btn-primary" onclick="addContact('${id}')">Log Contact</button></div>
-      <div class="contact-log" style="margin-top:10px">${contHtml || '<div class="empty-state">No contacts logged</div>'}</div>
+    <div style="margin-bottom:15px;padding:12px;background:#0a0a0a;border:1px solid #333;border-radius:4px">
+      <h4 style="color:#0f0;margin-bottom:10px;font-size:13px">🎯 Experience & Skills</h4>
+      ${model.experienceDescription ? `<div style="font-size:11px;color:#ccc;margin-bottom:8px;line-height:1.6">${model.experienceDescription}</div>` : ''}
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;font-size:11px">
+        <div><strong style="color:#999">Adult Experience:</strong> ${model.adultExperience || 'none'}</div>
+        <div><strong style="color:#999">Payment:</strong> ${model.paymentPreference || 'flexible'}</div>
+        ${model.canSpeakEnglish ? `<div><strong style="color:#999">English:</strong> ${model.englishLevel || 5}/10</div>` : '<div style="color:#666">No English</div>'}
+      </div>
+    </div>
+
+    <div style="margin-bottom:15px;padding:12px;background:#0a0a0a;border:1px solid #333;border-radius:4px">
+      <h4 style="color:#0f0;margin-bottom:10px;font-size:13px">🖥️ Setup & Equipment</h4>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:11px">
+        <div><strong style="color:#999">Phone:</strong> ${model.phone || '-'}</div>
+        <div><strong style="color:#999">PC:</strong> ${model.pc || '-'}</div>
+        <div>${model.hasWebcam ? '✅' : '❌'} Webcam</div>
+        <div>${model.hasLovense ? '✅' : '❌'} Lovense Lush</div>
+      </div>
+    </div>
+
+    ${model.status === 'active' && model.hasSystemAccess ? `
+    <div style="margin-bottom:15px;padding:12px;background:#111;border:1px solid #ff0;border-radius:4px">
+      <h4 style="color:#ff0;margin-bottom:10px;font-size:13px">🔐 System Access</h4>
+      <div style="font-size:11px">
+        <div><strong style="color:#999">Username:</strong> <code style="background:#000;padding:2px 6px;border-radius:2px">${model.systemUsername || '-'}</code></div>
+        <div style="margin-top:5px"><strong style="color:#999">Password:</strong> <code style="background:#000;padding:2px 6px;border-radius:2px">${model.systemPassword || '-'}</code></div>
+      </div>
+    </div>` : ''}
+
+    <div style="margin-bottom:15px;padding:12px;background:#0a0a0a;border:1px solid #333;border-radius:4px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <h4 style="color:#0f0;font-size:13px;margin:0">💬 Communication Logs (${commNotes.length})</h4>
+        ${commNotes.length > 0 ? `<span id="toggleAllLogs" style="font-size:10px;color:#0f0;cursor:pointer" onclick="document.getElementById('allLogsView').style.display = document.getElementById('allLogsView').style.display === 'none' ? 'block' : 'none'; this.textContent = document.getElementById('allLogsView').style.display === 'none' ? 'Show All ▼' : 'Hide ▲'">Show All ▼</span>` : ''}
+      </div>
+      <div id="allLogsView" style="display:none;max-height:400px;overflow-y:auto">
+        ${commNotes.length > 0 ? [...commNotes].reverse().map(note => {
+          const noteDate = new Date(note.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          const progressIcon = note.progress === 'positive' ? '✅' : (note.progress === 'negative' ? '❌' : '➖');
+          const progressColor = note.progress === 'positive' ? '#0f0' : (note.progress === 'negative' ? '#f00' : '#ff0');
+          return `<div style="margin-bottom:10px;padding:10px;background:#111;border-left:3px solid ${progressColor};border-radius:3px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+              <span style="font-size:10px;color:#999">${noteDate}</span>
+              <span style="font-size:12px">${progressIcon}</span>
+            </div>
+            <div style="font-size:11px;color:#ccc;line-height:1.5">${note.note || 'No note'}</div>
+            ${note.contentUpdate ? `<div style="margin-top:6px;padding:6px;background:#0a0a0a;border-radius:2px">
+              <div style="font-size:9px;color:#0f0;margin-bottom:2px">Content Update:</div>
+              <div style="font-size:10px;color:#999">${note.contentUpdate}</div>
+            </div>` : ''}
+          </div>`;
+        }).join('') : '<div style="color:#666;font-size:11px">No communication logs yet</div>'}
+      </div>
+      ${commNotes.length === 0 ? '<div style="color:#666;font-size:11px">No communication logs yet</div>' : ''}
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="btn btn-primary" onclick="closeModal();logCommunication('${model.id}')" style="flex:1">Log Communication</button>
+      <button class="btn" onclick="closeModal();modal('model',${JSON.stringify(model).replace(/"/g, '&quot;')})" style="flex:1">Edit Model</button>
+      <button class="btn" onclick="closeModal()" style="flex:0;min-width:100px">Close</button>
     </div>
   `;
 
-  document.getElementById('modal').classList.add('active');
+  m.classList.add('active');
 }
 
 async function toggleModelCheck(modelId, checkId) {
