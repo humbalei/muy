@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DEBUG - Users</title>
+  <style>
+    body {
+      background: #000;
+      color: #0f0;
+      font-family: 'Courier New', monospace;
+      padding: 20px;
+    }
+    .user {
+      background: #0a0a0a;
+      border: 1px solid #0f0;
+      padding: 15px;
+      margin: 10px 0;
+      border-radius: 4px;
+    }
+    button {
+      background: #0f0;
+      color: #000;
+      border: none;
+      padding: 10px 20px;
+      cursor: pointer;
+      font-family: 'Courier New', monospace;
+      font-weight: bold;
+      margin: 10px 5px;
+    }
+    input {
+      background: #0a0a0a;
+      border: 1px solid #0f0;
+      color: #0f0;
+      padding: 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 16px;
+      width: 200px;
+      margin: 5px;
+    }
+    .success { color: #0f0; }
+    .error { color: #f55; }
+  </style>
+</head>
+<body>
+  <h1>🔍 DEBUG - USERS DATABASE</h1>
+
+  <h2>1. LIST ALL USERS:</h2>
+  <button onclick="loadUsers()">LOAD USERS FROM FIREBASE</button>
+  <div id="usersList"></div>
+
+  <hr style="border-color: #0f0; margin: 30px 0;">
+
+  <h2>2. TEST LOGIN:</h2>
+  <div>
+    <input type="text" id="testUser" placeholder="username" value="admin">
+    <input type="password" id="testPass" placeholder="password" value="">
+  </div>
+  <button onclick="testLogin()">TEST LOGIN</button>
+  <div id="loginResult"></div>
+
+  <hr style="border-color: #0f0; margin: 30px 0;">
+
+  <h2>3. CHECK STORAGE:</h2>
+  <button onclick="checkStorage()">CHECK localStorage & sessionStorage</button>
+  <div id="storageResult"></div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="js/config.js?v=1003"></script>
+
+  <script>
+    // Initialize Firebase
+    firebase.initializeApp(CONFIG.firebase);
+    const db = firebase.firestore();
+
+    async function loadUsers() {
+      const output = document.getElementById('usersList');
+      output.innerHTML = '<p style="color:#ff0">⏳ Loading users from Firebase...</p>';
+
+      try {
+        const snapshot = await db.collection('users').get();
+
+        if (snapshot.empty) {
+          output.innerHTML = '<p class="error">❌ No users found in database!</p>';
+          return;
+        }
+
+        let html = '<p class="success">✅ Found ' + snapshot.size + ' users:</p>';
+
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          html += `
+            <div class="user">
+              <strong>ID:</strong> ${doc.id}<br>
+              <strong>Password:</strong> ${data.password}<br>
+              <strong>Role:</strong> ${data.role || 'N/A'}<br>
+              <strong>Password Length:</strong> ${data.password ? data.password.length : 0} chars<br>
+              <strong>Raw Data:</strong> <pre>${JSON.stringify(data, null, 2)}</pre>
+            </div>
+          `;
+        });
+
+        output.innerHTML = html;
+      } catch (error) {
+        output.innerHTML = '<p class="error">❌ ERROR: ' + error.message + '</p>';
+        console.error('Error loading users:', error);
+      }
+    }
+
+    async function testLogin() {
+      const username = document.getElementById('testUser').value.trim();
+      const password = document.getElementById('testPass').value;
+      const output = document.getElementById('loginResult');
+
+      output.innerHTML = '<p style="color:#ff0">⏳ Testing login...</p>';
+
+      console.log('🔐 TEST LOGIN');
+      console.log('Username:', username);
+      console.log('Password:', password);
+      console.log('Password length:', password.length);
+
+      try {
+        const doc = await db.collection('users').doc(username.toLowerCase()).get();
+
+        console.log('Document exists:', doc.exists);
+
+        if (!doc.exists) {
+          output.innerHTML = '<p class="error">❌ User not found: ' + username + '</p>';
+          return;
+        }
+
+        const data = doc.data();
+        console.log('User data:', data);
+
+        const storedPassword = data.password;
+        console.log('Stored password:', storedPassword);
+        console.log('Stored password length:', storedPassword.length);
+        console.log('Match:', storedPassword === password);
+
+        if (storedPassword === password) {
+          output.innerHTML = `
+            <p class="success">✅ LOGIN SUCCESS!</p>
+            <p>User ID: ${doc.id}</p>
+            <p>Role: ${data.role}</p>
+          `;
+        } else {
+          output.innerHTML = `
+            <p class="error">❌ WRONG PASSWORD!</p>
+            <p>Expected: "${storedPassword}" (${storedPassword.length} chars)</p>
+            <p>Got: "${password}" (${password.length} chars)</p>
+            <p>Match: ${storedPassword === password}</p>
+          `;
+        }
+      } catch (error) {
+        output.innerHTML = '<p class="error">❌ ERROR: ' + error.message + '</p>';
+        console.error('Test login error:', error);
+      }
+    }
+
+    function checkStorage() {
+      const output = document.getElementById('storageResult');
+
+      const teamUser = localStorage.getItem('teamUser');
+      const teamRememberMe = localStorage.getItem('teamRememberMe');
+      const teamLoginTime = localStorage.getItem('teamLoginTime');
+      const sessionUser = sessionStorage.getItem('teamUser');
+
+      let html = '<pre style="color:#0f0">';
+      html += 'localStorage.teamUser: ' + (teamUser ? 'EXISTS (' + teamUser.length + ' chars)' : 'NULL') + '\n';
+      html += 'localStorage.teamRememberMe: ' + teamRememberMe + '\n';
+      html += 'localStorage.teamLoginTime: ' + teamLoginTime + '\n';
+      html += 'sessionStorage.teamUser: ' + (sessionUser ? 'EXISTS (' + sessionUser.length + ' chars)' : 'NULL') + '\n\n';
+
+      if (teamUser) {
+        try {
+          const user = JSON.parse(teamUser);
+          html += 'Parsed user: ' + JSON.stringify(user, null, 2) + '\n';
+        } catch (e) {
+          html += 'ERROR parsing user: ' + e.message + '\n';
+        }
+      }
+
+      html += '</pre>';
+
+      html += '<button onclick="localStorage.clear(); sessionStorage.clear(); alert(\'Storage cleared!\'); checkStorage();">CLEAR ALL STORAGE</button>';
+
+      output.innerHTML = html;
+    }
+  </script>
+</body>
+</html>
