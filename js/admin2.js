@@ -1883,10 +1883,13 @@ async function delScript(id) {
 let currentExpandedCollection = null;
 
 async function loadLeads() {
+  console.log('=== LOADING LEADS ===');
   const collections = await DB.getAll('lead_collections', [{ field: 'userId', value: userId }]);
+  console.log('Collections found:', collections.length);
 
   let html = '';
   for (const coll of collections) {
+    console.log('Collection:', coll.name, 'accountIds:', coll.accountIds);
     const leads = await DB.getAll('leads', [{ field: 'collectionId', value: coll.id }]);
     const outreached = leads.filter(l => l.outreached).length;
     const total = leads.length;
@@ -1894,6 +1897,19 @@ async function loadLeads() {
 
     const platformLabel = coll.platform === 'instagram' ? 'IG' :
                           coll.platform === 'twitter' ? 'TW' : 'WC';
+
+    // Get assigned accounts
+    let accountsHtml = '';
+    if (coll.accountIds && coll.accountIds.length > 0) {
+      console.log('  -> Has accountIds:', coll.accountIds);
+      const allAccounts = await DB.getAccounts();
+      console.log('  -> All accounts:', allAccounts.length);
+      const assignedAccounts = allAccounts.filter(acc => coll.accountIds.includes(acc.id));
+      console.log('  -> Assigned accounts:', assignedAccounts.length, assignedAccounts.map(a => a.username));
+      accountsHtml = assignedAccounts.map(acc => `<span style="font-size:10px;padding:2px 8px;background:#001a00;color:#0f0;border:1px solid #0f0;margin-right:6px;font-family:'Courier New',monospace">@${acc.username}</span>`).join('');
+    } else {
+      console.log('  -> NO accountIds');
+    }
 
     html += `<div style="margin-bottom:15px;border:1px solid #333;background:#0a0a0a">
       <!-- Collection Header -->
@@ -1905,11 +1921,13 @@ async function loadLeads() {
               <span style="letter-spacing:1px">[${platformLabel}]</span>
               ${coll.name.toUpperCase()}
             </div>
-            <div style="display:flex;gap:15px;font-size:11px;color:#666;font-family:'Courier New',monospace">
+            <div style="display:flex;gap:15px;font-size:11px;color:#666;font-family:'Courier New',monospace;margin-bottom:6px">
               <span>TOTAL:<strong style="color:#0f0;margin-left:5px">${total}</strong></span>
               <span>DONE:<strong style="color:#ff0;margin-left:5px">${outreached}</strong></span>
               <span>PEND:<strong style="color:#f55;margin-left:5px">${total - outreached}</strong></span>
             </div>
+            ${coll.notes ? `<div style="font-size:10px;color:#999;font-family:'Courier New',monospace;margin-bottom:6px;font-style:italic">${coll.notes}</div>` : ''}
+            ${accountsHtml ? `<div style="margin-top:8px">${accountsHtml}</div>` : '<div style="font-size:10px;color:#666;font-family:\'Courier New\',monospace;margin-top:4px">NO ACCOUNTS ASSIGNED</div>'}
           </div>
           <div style="display:flex;gap:6px" onclick="event.stopPropagation()">
             <button class="btn btn-sm" style="font-size:10px;padding:4px 10px" onclick="editCollection('${coll.id}')">EDIT</button>
@@ -2066,20 +2084,36 @@ function toggleCollectionForm() {
     document.getElementById('collSaveBtnText').textContent = 'Create Collection';
     document.getElementById('collEditId').value = '';
     document.getElementById('collName').value = '';
+    document.getElementById('collNotes').value = '';
     document.getElementById('collPlatform').value = 'instagram';
 
-    DB.getAll('accounts', [{ field: 'userId', value: userId }]).then(accounts => {
+    // Set up save button click handler
+    const saveBtn = document.getElementById('saveCollBtn');
+    if (saveBtn) {
+      saveBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        saveLeadCollection();
+      };
+    }
+
+    DB.getAccounts().then(accounts => {
       const wrap = document.getElementById('collAccountsWrap');
+      console.log('Loaded accounts:', accounts.length);
       if (accounts.length === 0) {
-        wrap.innerHTML = '<div style="color:#666;font-size:11px;text-align:center;padding:10px">No accounts available</div>';
+        wrap.innerHTML = '<div style="color:#ff0;font-size:11px;text-align:center;padding:10px;font-family:\'Courier New\',monospace">NO ACCOUNTS. ADD ACCOUNTS IN OUTREACH SECTION FIRST.</div>';
         return;
       }
       wrap.innerHTML = accounts.map(acc => `
-        <label style="display:flex;align-items:center;gap:8px;margin:6px 0;cursor:pointer;padding:6px;border-radius:3px" onmouseover="this.style.background='#111'" onmouseout="this.style.background='transparent'">
-          <input type="checkbox" class="collAccCheck" value="${acc.id}" style="width:16px;height:16px">
-          <span style="font-size:11px;color:#ccc">@${acc.username} <span style="color:#666">(${acc.type})</span></span>
+        <label style="display:flex;align-items:center;gap:8px;margin:6px 0;cursor:pointer;padding:6px;background:#0a0a0a;border:1px solid #333" onmouseover="this.style.borderColor='#0f0'" onmouseout="this.style.borderColor='#333'">
+          <input type="checkbox" class="collAccCheck" value="${acc.id}" style="width:16px;height:16px;cursor:pointer;accent-color:#0f0">
+          <span style="font-size:11px;color:#0f0;font-family:'Courier New',monospace">@${acc.username}</span>
+          <span style="color:#666;font-size:10px;font-family:'Courier New',monospace">[${acc.type}]</span>
         </label>
       `).join('');
+    }).catch(err => {
+      console.error('Error loading accounts:', err);
+      toast('Error loading accounts: ' + err.message, 'error');
     });
   }
 }
@@ -2087,35 +2121,65 @@ function toggleCollectionForm() {
 function cancelCollectionForm() {
   document.getElementById('collectionForm').style.display = 'none';
   document.getElementById('collFormBtnText').textContent = '+ Create Collection';
+  // Clear form
+  document.getElementById('collEditId').value = '';
+  document.getElementById('collName').value = '';
+  document.getElementById('collNotes').value = '';
+  document.getElementById('collPlatform').value = 'instagram';
+  document.getElementById('collAccountsWrap').innerHTML = '';
 }
 
 async function editCollection(collId) {
-  const coll = await DB.get('lead_collections', collId);
-  if (!coll) return;
+  try {
+    const coll = await DB.get('lead_collections', collId);
+    if (!coll) {
+      toast('Collection not found', 'error');
+      return;
+    }
 
-  document.getElementById('collectionForm').style.display = 'block';
-  document.getElementById('collFormTitle').textContent = 'Edit Collection';
-  document.getElementById('collFormBtnText').textContent = '✕ Cancel';
-  document.getElementById('collSaveBtnText').textContent = 'Update Collection';
-  document.getElementById('collEditId').value = coll.id;
-  document.getElementById('collName').value = coll.name;
-  document.getElementById('collPlatform').value = coll.platform;
+    document.getElementById('collectionForm').style.display = 'block';
+    document.getElementById('collFormTitle').textContent = 'Edit Collection';
+    document.getElementById('collFormBtnText').textContent = '✕ Cancel';
+    document.getElementById('collSaveBtnText').textContent = 'Update Collection';
+    document.getElementById('collEditId').value = coll.id;
+    document.getElementById('collName').value = coll.name;
+    document.getElementById('collNotes').value = coll.notes || '';
+    document.getElementById('collPlatform').value = coll.platform;
 
-  const accounts = await DB.getAll('accounts', [{ field: 'userId', value: userId }]);
-  const wrap = document.getElementById('collAccountsWrap');
-  if (accounts.length === 0) {
-    wrap.innerHTML = '<div style="color:#666;font-size:11px;text-align:center;padding:10px">No accounts available</div>';
-    return;
+    // Set up save button click handler
+    const saveBtn = document.getElementById('saveCollBtn');
+    if (saveBtn) {
+      saveBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        saveLeadCollection();
+      };
+    }
+
+    const accounts = await DB.getAccounts();
+    const wrap = document.getElementById('collAccountsWrap');
+    console.log('Edit - Loaded accounts:', accounts.length);
+    console.log('Collection accountIds:', coll.accountIds);
+
+    if (accounts.length === 0) {
+      wrap.innerHTML = '<div style="color:#ff0;font-size:11px;text-align:center;padding:10px;font-family:\'Courier New\',monospace">NO ACCOUNTS. ADD ACCOUNTS IN OUTREACH SECTION FIRST.</div>';
+      return;
+    }
+
+    wrap.innerHTML = accounts.map(acc => {
+      const checked = coll.accountIds && coll.accountIds.includes(acc.id);
+      return `<label style="display:flex;align-items:center;gap:8px;margin:6px 0;cursor:pointer;padding:6px;background:#0a0a0a;border:1px solid ${checked ? '#0f0' : '#333'}" onmouseover="this.style.borderColor='#0f0'" onmouseout="this.style.borderColor='${checked ? '#0f0' : '#333'}'">
+        <input type="checkbox" class="collAccCheck" value="${acc.id}" ${checked ? 'checked' : ''} style="width:16px;height:16px;cursor:pointer;accent-color:#0f0">
+        <span style="font-size:11px;color:#0f0;font-family:'Courier New',monospace">@${acc.username}</span>
+        <span style="color:#666;font-size:10px;font-family:'Courier New',monospace">[${acc.type}]</span>
+      </label>`;
+    }).join('');
+
+    document.getElementById('collectionForm').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch (err) {
+    console.error('Error editing collection:', err);
+    toast('Error loading collection: ' + err.message, 'error');
   }
-  wrap.innerHTML = accounts.map(acc => {
-    const checked = coll.accountIds && coll.accountIds.includes(acc.id);
-    return `<label style="display:flex;align-items:center;gap:8px;margin:6px 0;cursor:pointer;padding:6px;border-radius:3px" onmouseover="this.style.background='#111'" onmouseout="this.style.background='transparent'">
-      <input type="checkbox" class="collAccCheck" value="${acc.id}" ${checked ? 'checked' : ''} style="width:16px;height:16px">
-      <span style="font-size:11px;color:#ccc">@${acc.username} <span style="color:#666">(${acc.type})</span></span>
-    </label>`;
-  }).join('');
-
-  document.getElementById('collectionForm').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 async function deleteLeadCollection(collId) {
@@ -4999,35 +5063,90 @@ async function updateScript(type) {
 }
 
 async function saveLeadCollection() {
-  const editId = document.getElementById('collEditId')?.value;
-  const name = document.getElementById('collName')?.value?.trim();
-  const platform = document.getElementById('collPlatform')?.value;
+  try {
+    console.log('=== SAVE COLLECTION START ===');
+    const editId = document.getElementById('collEditId')?.value?.trim();
+    const name = document.getElementById('collName')?.value?.trim();
+    const notes = document.getElementById('collNotes')?.value?.trim() || '';
+    const platform = document.getElementById('collPlatform')?.value;
 
-  if (!name) {
-    toast('Collection name is required', 'error');
-    return;
+    console.log('editId:', editId);
+    console.log('name:', name);
+    console.log('platform:', platform);
+    console.log('notes:', notes);
+
+    // Validation
+    if (!name) {
+      toast('Collection name is required', 'error');
+      return;
+    }
+    if (!platform) {
+      toast('Platform is required', 'error');
+      return;
+    }
+
+    // Get selected accounts
+    const checkboxes = document.querySelectorAll('.collAccCheck:checked');
+    const accountIds = Array.from(checkboxes).map(cb => cb.value);
+    console.log('accountIds:', accountIds);
+
+    const db = firebase.firestore();
+
+    if (editId && editId !== '') {
+      // ===== UPDATE EXISTING COLLECTION =====
+      console.log('UPDATING collection:', editId);
+
+      // Only send fields that need to be updated - NO createdAt!
+      const updateData = {
+        name: name,
+        notes: notes,
+        platform: platform,
+        accountIds: accountIds,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+
+      console.log('updateData:', JSON.stringify({...updateData, updatedAt: '[ServerTimestamp]'}));
+
+      // Use Firebase update() method directly
+      await db.collection('lead_collections').doc(editId).update(updateData);
+
+      console.log('✅ Update SUCCESS');
+      toast('Collection updated! ✅', 'success');
+    } else {
+      // ===== CREATE NEW COLLECTION =====
+      console.log('CREATING new collection');
+
+      const createData = {
+        userId: userId,
+        name: name,
+        notes: notes,
+        platform: platform,
+        accountIds: accountIds,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+
+      console.log('createData:', JSON.stringify({...createData, createdAt: '[ServerTimestamp]', updatedAt: '[ServerTimestamp]'}));
+
+      await db.collection('lead_collections').add(createData);
+
+      console.log('✅ Create SUCCESS');
+      toast('Collection created! ✅', 'success');
+    }
+
+    cancelCollectionForm();
+    await loadLeads();
+    console.log('=== SAVE COLLECTION END ===');
+  } catch (err) {
+    console.error('❌ ERROR:', err);
+    console.error('Error details:', {
+      name: err.name,
+      message: err.message,
+      code: err.code,
+      stack: err.stack
+    });
+    toast('ERROR: ' + err.message, 'error');
   }
-
-  const accountIds = Array.from(document.querySelectorAll('.collAccCheck:checked')).map(cb => cb.value);
-
-  const data = {
-    userId: userId,
-    name: name,
-    platform: platform,
-    accountIds: accountIds,
-    createdAt: editId ? undefined : new Date().toISOString()
-  };
-
-  if (editId) {
-    await DB.update('lead_collections', editId, data);
-    toast('Collection updated!', 'success');
-  } else {
-    await DB.add('lead_collections', data);
-    toast('Collection created!', 'success');
-  }
-
-  cancelCollectionForm();
-  loadLeads();
 }
 
 async function saveLeadItem() {
