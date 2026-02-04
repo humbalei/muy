@@ -1887,19 +1887,133 @@ async function loadModels() {
   document.getElementById('actList').innerHTML = renderModels(act) || '<div class="empty-state">No active models</div>';
 }
 
+async function logCommunication(modelId) {
+  const model = await DB.get('models', modelId);
+  if (!model) {
+    toast('Model not found', 'error');
+    return;
+  }
+
+  const note = prompt('Add a note about today\'s communication (optional):');
+  if (note === null) return; // User cancelled
+
+  const today = new Date().toISOString().split('T')[0];
+  const lastComm = model.lastCommunication ? new Date(model.lastCommunication).toISOString().split('T')[0] : null;
+
+  // Check if already logged today
+  if (lastComm === today) {
+    toast('Already logged communication for today', 'info');
+    return;
+  }
+
+  // Calculate streak
+  let streak = model.communicationStreak || 0;
+  if (lastComm) {
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+    if (lastComm === yesterdayStr) {
+      streak += 1; // Continue streak
+    } else {
+      streak = 1; // Reset streak
+    }
+  } else {
+    streak = 1; // First communication
+  }
+
+  // Add communication note
+  const commNotes = model.communicationNotes || [];
+  if (note && note.trim()) {
+    commNotes.push({
+      date: today,
+      note: note.trim(),
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  await DB.update('models', modelId, {
+    lastCommunication: new Date().toISOString(),
+    communicationStreak: streak,
+    communicationNotes: commNotes
+  });
+
+  toast(`Communication logged! 🔥 ${streak} day streak`, 'success');
+  loadModels();
+}
+
+async function moveToActive(modelId) {
+  if (!confirm('Move this model to Active? This means you\'ve started working with her.')) return;
+
+  await DB.update('models', modelId, {
+    status: 'active',
+    activatedDate: new Date().toISOString()
+  });
+
+  toast('Model moved to Active!', 'success');
+  loadModels();
+}
+
+async function viewModelDetails(modelId) {
+  const model = await DB.get('models', modelId);
+  if (!model) {
+    toast('Model not found', 'error');
+    return;
+  }
+
+  // Open edit modal which will show performance fields for active models
+  modal('model', model);
+}
+
 function renderModels(models) {
   if (!models.length) return '';
   let html = '';
+  const today = new Date().toISOString().split('T')[0];
+
   models.forEach(m => {
-    html += `<div class="model-card" onclick="modal('modelView','${m.id}')">
-      <div class="model-card-img">
-        ${m.photo ? `<img src="${m.photo}" alt="${m.name}">` : 'No Photo'}
+    // Calculate days since last communication
+    const lastComm = m.lastCommunication ? new Date(m.lastCommunication).toISOString().split('T')[0] : null;
+    const daysSince = lastComm ? Math.floor((new Date(today) - new Date(lastComm)) / (1000 * 60 * 60 * 24)) : null;
+    const needsContact = daysSince === null || daysSince > 0;
+    const streak = m.communicationStreak || 0;
+
+    // Contact status badges
+    const contactBadges = [];
+    if (m.onAssistantTelegram) contactBadges.push('<span title="On My Telegram" style="background:#0088cc;color:#fff;padding:2px 6px;border-radius:2px;font-size:9px">My TG</span>');
+    if (m.onAssistantWhatsApp) contactBadges.push('<span title="On My WhatsApp" style="background:#25D366;color:#fff;padding:2px 6px;border-radius:2px;font-size:9px">My WA</span>');
+    if (m.onBossTelegram) contactBadges.push('<span title="On Boss\'s Telegram" style="background:#0088cc;color:#fff;padding:2px 6px;border-radius:2px;font-size:9px">Boss TG</span>');
+    if (m.onBossWhatsApp) contactBadges.push('<span title="On Boss\'s WhatsApp" style="background:#25D366;color:#fff;padding:2px 6px;border-radius:2px;font-size:9px">Boss WA</span>');
+
+    html += `<div class="model-card" style="cursor:default;padding:12px">
+      <div class="model-card-img" onclick="modal('model',${JSON.stringify(m).replace(/"/g, '&quot;')})" style="cursor:pointer">
+        ${m.photo ? `<img src="${m.photo}" alt="${m.name}">` : '<div style="display:flex;align-items:center;justify-content:center;height:100%;background:#222;color:#666">No Photo</div>'}
       </div>
       <div class="model-card-body">
-        <div class="model-card-name">${m.name}</div>
-        <div class="model-card-info">
-          <div>${m.country || '-'}, ${m.age || '-'}y</div>
-          <span class="status status-${m.status}">${m.status}</span>
+        <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px">
+          <div>
+            <div class="model-card-name" onclick="modal('model',${JSON.stringify(m).replace(/"/g, '&quot;')})" style="cursor:pointer">${m.name}</div>
+            <div style="font-size:11px;color:#999">${m.country || '-'}, ${m.age || '-'}y</div>
+          </div>
+          <div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:flex-end;max-width:50%">
+            ${contactBadges.join('')}
+          </div>
+        </div>
+
+        <div style="margin:8px 0;padding:8px;background:#0a0a0a;border:1px solid #333;border-radius:3px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+            <span style="font-size:10px;color:#666">Communication:</span>
+            <span style="font-size:11px;color:${needsContact ? '#f00' : '#0f0'}">${needsContact ? (daysSince === null ? 'Never' : `${daysSince}d ago`) : 'Today ✓'}</span>
+          </div>
+          ${streak > 0 ? `<div style="font-size:10px;color:#ff0">🔥 ${streak} day streak</div>` : ''}
+        </div>
+
+        <div style="display:flex;gap:5px;margin-top:8px">
+          <button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px" onclick="logCommunication('${m.id}')">Log Today</button>
+          <button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px" onclick="modal('model',${JSON.stringify(m).replace(/"/g, '&quot;')})">Edit</button>
+          ${m.status === 'potential' ?
+            `<button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px;background:#0f0;color:#000" onclick="moveToActive('${m.id}')">Active</button>` :
+            `<button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px" onclick="viewModelDetails('${m.id}')">View</button>`
+          }
         </div>
       </div>
     </div>`;
@@ -3111,32 +3225,127 @@ async function modal(type, data) {
       break;
 
     case 'model':
-      title.textContent = 'Add Model';
+      const isEditModel = data && data.id;
+      title.textContent = isEditModel ? `Edit ${data.name}` : 'Add New Model';
       document.getElementById('mBox').className = 'modal-box large';
       body.innerHTML = `
-        <div class="grid grid-2">
-          <div class="form-group">
-            <label class="form-label">Name:</label>
-            <input type="text" class="form-input" id="modName">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Photo URL (imgur):</label>
-            <input type="text" class="form-input" id="modPhoto" placeholder="https://i.imgur.com/...">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Country:</label>
-            <input type="text" class="form-input" id="modCountry">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Age:</label>
-            <input type="number" class="form-input" id="modAge">
+        ${isEditModel ? `<input type="hidden" id="modEditId" value="${data.id}">` : ''}
+        <div style="margin-bottom:20px;padding-bottom:20px;border-bottom:2px solid #333">
+          <h3 style="color:#0f0;margin-bottom:15px">Basic Info</h3>
+          <div class="grid grid-2">
+            <div class="form-group">
+              <label class="form-label">Name:</label>
+              <input type="text" class="form-input" id="modName" value="${isEditModel ? data.name || '' : ''}">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Photo URL (Imgur recommended):</label>
+              <input type="text" class="form-input" id="modPhoto" placeholder="https://i.imgur.com/..." value="${isEditModel ? data.photo || '' : ''}">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Country:</label>
+              <input type="text" class="form-input" id="modCountry" value="${isEditModel ? data.country || '' : ''}">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Age:</label>
+              <input type="number" class="form-input" id="modAge" value="${isEditModel ? data.age || '' : ''}">
+            </div>
           </div>
         </div>
-        <div class="form-group">
-          <label class="form-label">Notes:</label>
-          <textarea class="form-textarea" id="modNotes"></textarea>
+
+        <div style="margin-bottom:20px;padding-bottom:20px;border-bottom:2px solid #333">
+          <h3 style="color:#0f0;margin-bottom:15px">Contact Status</h3>
+          <div class="grid grid-2">
+            <div class="form-group">
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                <input type="checkbox" id="modOnAssistTg" style="width:20px;height:20px" ${isEditModel && data.onAssistantTelegram ? 'checked' : ''}>
+                <span>On My Telegram</span>
+              </label>
+            </div>
+            <div class="form-group">
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                <input type="checkbox" id="modOnAssistWa" style="width:20px;height:20px" ${isEditModel && data.onAssistantWhatsApp ? 'checked' : ''}>
+                <span>On My WhatsApp</span>
+              </label>
+            </div>
+            <div class="form-group">
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                <input type="checkbox" id="modOnBossTg" style="width:20px;height:20px" ${isEditModel && data.onBossTelegram ? 'checked' : ''}>
+                <span>On Boss's Telegram</span>
+              </label>
+            </div>
+            <div class="form-group">
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                <input type="checkbox" id="modOnBossWa" style="width:20px;height:20px" ${isEditModel && data.onBossWhatsApp ? 'checked' : ''}>
+                <span>On Boss's WhatsApp</span>
+              </label>
+            </div>
+          </div>
         </div>
-        <button class="btn btn-primary" onclick="saveModel()">Save Model</button>
+
+        <div style="margin-bottom:20px;padding-bottom:20px;border-bottom:2px solid #333">
+          <h3 style="color:#0f0;margin-bottom:15px">Background & Motivation</h3>
+          <div class="grid grid-2">
+            <div class="form-group">
+              <label class="form-label">Adult Industry Experience:</label>
+              <select class="form-select" id="modExperience">
+                <option value="none" ${isEditModel && data.adultExperience === 'none' ? 'selected' : ''}>No Experience</option>
+                <option value="some" ${isEditModel && data.adultExperience === 'some' ? 'selected' : ''}>Some Experience</option>
+                <option value="experienced" ${isEditModel && data.adultExperience === 'experienced' ? 'selected' : ''}>Experienced</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Payment Preference:</label>
+              <select class="form-select" id="modPayment">
+                <option value="percentage" ${isEditModel && data.paymentPreference === 'percentage' ? 'selected' : ''}>Percentage (%)</option>
+                <option value="salary" ${isEditModel && data.paymentPreference === 'salary' ? 'selected' : ''}>Salary</option>
+                <option value="flexible" ${isEditModel && data.paymentPreference === 'flexible' ? 'selected' : ''}>Flexible</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                <input type="checkbox" id="modHasJob" style="width:20px;height:20px" ${isEditModel && data.hasJob ? 'checked' : ''}>
+                <span>Has a Job</span>
+              </label>
+            </div>
+            <div class="form-group">
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                <input type="checkbox" id="modStudying" style="width:20px;height:20px" ${isEditModel && data.isStudying ? 'checked' : ''}>
+                <span>Is Studying</span>
+              </label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Motivation (What motivates her?):</label>
+            <textarea class="form-textarea" id="modMotivation" style="min-height:80px">${isEditModel ? data.motivation || '' : ''}</textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Why Does She Want This? (Her reasons):</label>
+            <textarea class="form-textarea" id="modWhy" style="min-height:80px">${isEditModel ? data.whyDoThis || '' : ''}</textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Life Situation & Problems:</label>
+            <textarea class="form-textarea" id="modLifeSituation" style="min-height:80px">${isEditModel ? data.lifeSituation || '' : ''}</textarea>
+          </div>
+        </div>
+
+        ${isEditModel && data.status === 'active' ? `
+        <div style="margin-bottom:20px">
+          <h3 style="color:#0f0;margin-bottom:15px">Active Model - Performance</h3>
+          <div class="form-group">
+            <label class="form-label">Content Performance (How is she doing with content creation?):</label>
+            <textarea class="form-textarea" id="modContentPerf" style="min-height:80px">${data.contentPerformance || ''}</textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Overall Status & Report:</label>
+            <textarea class="form-textarea" id="modOverallStatus" style="min-height:80px">${data.overallStatus || ''}</textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Checklist Progress Notes:</label>
+            <textarea class="form-textarea" id="modChecklistProgress" style="min-height:60px">${data.checklistProgress || ''}</textarea>
+          </div>
+        </div>` : ''}
+
+        <button class="btn btn-primary" onclick="saveModel()">${isEditModel ? 'Update' : 'Save'} Model</button>
       `;
       break;
 
@@ -4093,15 +4302,60 @@ async function updateScript(type) {
 }
 
 async function saveModel() {
-  await DB.add('models', {
-    name: document.getElementById('modName').value,
-    photo: document.getElementById('modPhoto').value,
-    country: document.getElementById('modCountry').value,
-    age: parseInt(document.getElementById('modAge').value) || null,
-    notes: document.getElementById('modNotes').value,
-    status: 'potential',
-    checklist: []
-  });
+  const editId = document.getElementById('modEditId')?.value;
+  const name = document.getElementById('modName')?.value?.trim();
+
+  if (!name) {
+    toast('Name is required', 'error');
+    return;
+  }
+
+  const data = {
+    name: name,
+    photo: document.getElementById('modPhoto')?.value?.trim() || '',
+    country: document.getElementById('modCountry')?.value?.trim() || '',
+    age: parseInt(document.getElementById('modAge')?.value) || null,
+
+    // Contact status
+    onAssistantTelegram: document.getElementById('modOnAssistTg')?.checked || false,
+    onAssistantWhatsApp: document.getElementById('modOnAssistWa')?.checked || false,
+    onBossTelegram: document.getElementById('modOnBossTg')?.checked || false,
+    onBossWhatsApp: document.getElementById('modOnBossWa')?.checked || false,
+
+    // Background
+    adultExperience: document.getElementById('modExperience')?.value || 'none',
+    paymentPreference: document.getElementById('modPayment')?.value || 'flexible',
+    hasJob: document.getElementById('modHasJob')?.checked || false,
+    isStudying: document.getElementById('modStudying')?.checked || false,
+    motivation: document.getElementById('modMotivation')?.value?.trim() || '',
+    whyDoThis: document.getElementById('modWhy')?.value?.trim() || '',
+    lifeSituation: document.getElementById('modLifeSituation')?.value?.trim() || '',
+
+    // Communication tracking
+    communicationNotes: [], // Array of {date, note, progress}
+    lastCommunication: null,
+    communicationStreak: 0
+  };
+
+  // For active models - performance data
+  if (document.getElementById('modContentPerf')) {
+    data.contentPerformance = document.getElementById('modContentPerf')?.value?.trim() || '';
+    data.overallStatus = document.getElementById('modOverallStatus')?.value?.trim() || '';
+    data.checklistProgress = document.getElementById('modChecklistProgress')?.value?.trim() || '';
+  }
+
+  if (editId) {
+    // Update existing model
+    await DB.update('models', editId, data);
+    toast('Model updated!', 'success');
+  } else {
+    // Add new model as potential
+    data.status = 'potential';
+    data.addedDate = new Date().toISOString();
+    await DB.add('models', data);
+    toast('Model added!', 'success');
+  }
+
   closeModal();
   loadModels();
 }
