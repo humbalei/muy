@@ -11,15 +11,22 @@
   box-sizing: border-box;
 }
 
+html {
+  overflow-x: hidden !important; /* CRITICAL: No horizontal scroll */
+  width: 100%;
+  max-width: 100vw;
+}
+
 body {
   font-family: Tahoma, Arial, Helvetica, sans-serif;
   font-size: 12px;
   background: url('../img/bg-palms.png') center center / cover fixed no-repeat, #0a0a0a;
   color: #0f0;
   min-height: 100vh;
-  overflow-x: hidden; /* Prevent horizontal scroll */
+  overflow-x: hidden !important; /* CRITICAL: No horizontal scroll */
   width: 100%;
   max-width: 100vw;
+  position: relative;
 }
 
 a {
@@ -90,11 +97,10 @@ a:hover {
   display: flex;
   align-items: center;
   gap: 5px;
-  overflow-x: auto; /* Allow horizontal scroll on mobile if needed */
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
+  flex-wrap: wrap; /* Wrap on mobile - NO horizontal scroll */
   width: 100%;
   max-width: 100vw;
+  overflow-x: hidden;
 }
 
 .nav-link {
@@ -157,12 +163,10 @@ a:hover {
   background: #0a0a0a;
   padding: 5px;
   border-radius: 3px;
-  overflow-x: auto; /* Allow horizontal scroll on mobile */
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
-  flex-wrap: nowrap; /* Don't wrap tabs */
+  flex-wrap: wrap; /* Wrap tabs - NO horizontal scroll */
   width: 100%;
   max-width: 100%;
+  overflow-x: hidden;
 }
 
 .tab {
@@ -174,7 +178,7 @@ a:hover {
   cursor: pointer;
   border: 1px solid #1a1a1a;
   white-space: nowrap; /* Don't break tab text */
-  flex-shrink: 0; /* Don't shrink tabs */
+  flex-shrink: 1; /* Allow shrinking on mobile */
 }
 
 .tab:hover {
@@ -686,17 +690,18 @@ a:hover {
     max-width: 100vw !important;
   }
 
-  /* Main navigation - no wrap, allow scroll */
+  /* Main navigation - WRAP on mobile */
   .main-nav {
-    flex-wrap: nowrap;
-    overflow-x: auto;
+    flex-wrap: wrap !important;
+    overflow-x: hidden !important;
+    padding: 5px 10px;
   }
 
   .nav-link {
-    padding: 8px 10px;
-    font-size: 10px;
+    padding: 6px 8px;
+    font-size: 9px;
     white-space: nowrap;
-    flex-shrink: 0;
+    flex-shrink: 1;
   }
 
   /* Grid layouts - single column on mobile */
@@ -764,15 +769,16 @@ a:hover {
     padding: 5px 8px;
   }
 
-  /* Tabs - allow scroll */
+  /* Tabs - WRAP on mobile */
   .tabs {
-    overflow-x: auto;
-    flex-wrap: nowrap;
+    flex-wrap: wrap !important;
+    overflow-x: hidden !important;
   }
 
   .tab {
-    font-size: 10px;
-    padding: 6px 10px;
+    font-size: 9px;
+    padding: 5px 8px;
+    flex: 0 0 auto;
   }
 
   /* Modal */
