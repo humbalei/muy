@@ -299,6 +299,20 @@
           <div class="box-header">Instagram Accounts <button class="btn btn-sm btn-primary" onclick="modal('outreach-acc','instagram')">Add Account</button></div>
           <div class="box-body">
             <div id="warmupGuideIg" style="margin-bottom:15px"></div>
+            <div style="display:flex;gap:10px;margin-bottom:15px;flex-wrap:wrap">
+              <input type="text" id="igFilterUsername" class="form-input" placeholder="Search username..." style="flex:1;min-width:150px" onkeyup="loadOutreachAccounts()">
+              <select id="igFilterLocation" class="form-select" style="flex:0.5;min-width:120px" onchange="loadOutreachAccounts()">
+                <option value="">All Locations</option>
+                <option value="Phone">Phone</option>
+                <option value="PC">PC</option>
+                <option value="AdsPower">AdsPower</option>
+              </select>
+              <select id="igFilterStatus" class="form-select" style="flex:0.5;min-width:120px" onchange="loadOutreachAccounts()">
+                <option value="">All Status</option>
+                <option value="true">Healthy</option>
+                <option value="false">Expired</option>
+              </select>
+            </div>
             <div id="igList"></div>
           </div>
         </div>
@@ -310,6 +324,20 @@
           <div class="box-header">Twitter Accounts <button class="btn btn-sm btn-primary" onclick="modal('outreach-acc','twitter')">Add Account</button></div>
           <div class="box-body">
             <div id="warmupGuideTw" style="margin-bottom:15px"></div>
+            <div style="display:flex;gap:10px;margin-bottom:15px;flex-wrap:wrap">
+              <input type="text" id="twFilterUsername" class="form-input" placeholder="Search username..." style="flex:1;min-width:150px" onkeyup="loadOutreachAccounts()">
+              <select id="twFilterLocation" class="form-select" style="flex:0.5;min-width:120px" onchange="loadOutreachAccounts()">
+                <option value="">All Locations</option>
+                <option value="Phone">Phone</option>
+                <option value="PC">PC</option>
+                <option value="AdsPower">AdsPower</option>
+              </select>
+              <select id="twFilterStatus" class="form-select" style="flex:0.5;min-width:120px" onchange="loadOutreachAccounts()">
+                <option value="">All Status</option>
+                <option value="true">Healthy</option>
+                <option value="false">Expired</option>
+              </select>
+            </div>
             <div id="twList"></div>
           </div>
         </div>
@@ -319,7 +347,23 @@
       <div id="o-wc" class="tab-content">
         <div class="box">
           <div class="box-header">Webcam Accounts <button class="btn btn-sm btn-primary" onclick="modal('outreach-acc','webcam')">Add Account</button></div>
-          <div class="box-body" id="wcList"></div>
+          <div class="box-body">
+            <div style="display:flex;gap:10px;margin-bottom:15px;flex-wrap:wrap">
+              <input type="text" id="wcFilterUsername" class="form-input" placeholder="Search username..." style="flex:1;min-width:150px" onkeyup="loadOutreachAccounts()">
+              <select id="wcFilterLocation" class="form-select" style="flex:0.5;min-width:120px" onchange="loadOutreachAccounts()">
+                <option value="">All Locations</option>
+                <option value="Phone">Phone</option>
+                <option value="PC">PC</option>
+                <option value="AdsPower">AdsPower</option>
+              </select>
+              <select id="wcFilterStatus" class="form-select" style="flex:0.5;min-width:120px" onchange="loadOutreachAccounts()">
+                <option value="">All Status</option>
+                <option value="true">Active</option>
+                <option value="false">Inactive</option>
+              </select>
+            </div>
+            <div id="wcList"></div>
+          </div>
         </div>
       </div>
 

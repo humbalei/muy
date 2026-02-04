@@ -1353,9 +1353,36 @@ async function loadWarmupGuides() {
 }
 
 async function loadOutreachAccounts() {
-  const ig = await DB.getAccounts('instagram');
-  const tw = await DB.getAccounts('twitter');
-  const wc = await DB.getAccounts('webcam');
+  let ig = await DB.getAccounts('instagram');
+  let tw = await DB.getAccounts('twitter');
+  let wc = await DB.getAccounts('webcam');
+
+  // Apply IG filters
+  const igUsername = document.getElementById('igFilterUsername')?.value?.toLowerCase() || '';
+  const igLocation = document.getElementById('igFilterLocation')?.value || '';
+  const igStatus = document.getElementById('igFilterStatus')?.value || '';
+
+  if (igUsername) ig = ig.filter(a => a.username.toLowerCase().includes(igUsername));
+  if (igLocation) ig = ig.filter(a => a.location === igLocation);
+  if (igStatus !== '') ig = ig.filter(a => String(a.healthy) === igStatus);
+
+  // Apply TW filters
+  const twUsername = document.getElementById('twFilterUsername')?.value?.toLowerCase() || '';
+  const twLocation = document.getElementById('twFilterLocation')?.value || '';
+  const twStatus = document.getElementById('twFilterStatus')?.value || '';
+
+  if (twUsername) tw = tw.filter(a => a.username.toLowerCase().includes(twUsername));
+  if (twLocation) tw = tw.filter(a => a.location === twLocation);
+  if (twStatus !== '') tw = tw.filter(a => String(a.healthy) === twStatus);
+
+  // Apply WC filters
+  const wcUsername = document.getElementById('wcFilterUsername')?.value?.toLowerCase() || '';
+  const wcLocation = document.getElementById('wcFilterLocation')?.value || '';
+  const wcStatus = document.getElementById('wcFilterStatus')?.value || '';
+
+  if (wcUsername) wc = wc.filter(a => a.username.toLowerCase().includes(wcUsername));
+  if (wcLocation) wc = wc.filter(a => a.location === wcLocation);
+  if (wcStatus !== '') wc = wc.filter(a => String(a.healthy) === wcStatus);
 
   document.getElementById('igList').innerHTML = renderAccounts(ig);
   document.getElementById('twList').innerHTML = renderAccounts(tw);
@@ -1621,15 +1648,25 @@ function renderAccounts(accs) {
   if (!accs.length) return '<div class="empty-state">No accounts</div>';
   let html = '';
   accs.forEach(a => {
+    const proxyExpired = a.proxyExpiration && new Date(a.proxyExpiration) < new Date();
     html += `<div class="acc-card">
       <div class="acc-card-header">
         <span class="acc-card-title">@${a.username}</span>
         <span class="status ${a.healthy ? 'status-healthy' : 'status-expired'}">${a.healthy ? 'Healthy' : 'Expired'}</span>
       </div>
       <div class="acc-card-body">
-        <div>Location: ${a.location || '-'}</div>
-        <div>Proxy: ${a.proxyStatus || '-'} ${a.proxyType || ''}</div>
-        ${a.proxyDetails ? `<div>Proxy Details: ${a.proxyDetails}</div>` : ''}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <div><strong style="color:#666;font-size:10px">Location:</strong><br>${a.location || '-'}</div>
+          <div><strong style="color:#666;font-size:10px">Device:</strong><br>${a.deviceName || '-'}</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <div><strong style="color:#666;font-size:10px">Proxy Status:</strong><br>${a.proxyStatus || '-'}</div>
+          <div><strong style="color:#666;font-size:10px">Proxy Type:</strong><br>${a.proxyType || '-'}</div>
+        </div>
+        ${a.proxyDetails ? `<div style="margin-bottom:8px"><strong style="color:#666;font-size:10px">Proxy Details:</strong><br><code style="font-size:10px">${a.proxyDetails}</code></div>` : ''}
+        ${a.proxyExpiration ? `<div style="margin-bottom:8px"><strong style="color:#666;font-size:10px">Proxy Expiration:</strong><br><span style="color:${proxyExpired ? '#f00' : '#0f0'}">${a.proxyExpiration}${proxyExpired ? ' (EXPIRED)' : ''}</span></div>` : ''}
+        ${a.warmupStatus ? `<div style="margin-bottom:8px"><strong style="color:#666;font-size:10px">Warmup:</strong><br>${a.warmupStatus}</div>` : ''}
+        ${a.notes ? `<div style="margin-top:8px;padding:8px;background:#0a0a0a;border:1px solid #222;border-radius:3px;font-size:11px"><strong style="color:#666;font-size:9px">Notes:</strong><br>${a.notes}</div>` : ''}
       </div>
       <div class="acc-card-actions">
         <button class="btn btn-sm" onclick="editOutreachAcc('${a.id}')">Edit</button>
@@ -1644,17 +1681,28 @@ function renderWebcamAccounts(accs) {
   if (!accs.length) return '<div class="empty-state">No accounts</div>';
   let html = '';
   accs.forEach(a => {
+    const proxyExpired = a.proxyExpiration && new Date(a.proxyExpiration) < new Date();
     html += `<div class="acc-card">
       <div class="acc-card-header">
         <span class="acc-card-title">${a.username}</span>
         <span class="status ${a.healthy ? 'status-healthy' : 'status-expired'}">${a.healthy ? 'Active' : 'Inactive'}</span>
       </div>
       <div class="acc-card-body">
-        <div>Site: ${a.site || '-'}</div>
-        <div>Location: ${a.location || '-'}</div>
-        ${a.outreachMethod ? `<div style="margin-top:5px;padding:5px;background:#111;border:1px solid #333">
-          <strong>Outreach Method:</strong><br>${a.outreachMethod}
-        </div>` : ''}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <div><strong style="color:#666;font-size:10px">Site:</strong><br>${a.site || '-'}</div>
+          <div><strong style="color:#666;font-size:10px">Location:</strong><br>${a.location || '-'}</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <div><strong style="color:#666;font-size:10px">Device:</strong><br>${a.deviceName || '-'}</div>
+          <div><strong style="color:#666;font-size:10px">Proxy Status:</strong><br>${a.proxyStatus || '-'}</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <div><strong style="color:#666;font-size:10px">Proxy Type:</strong><br>${a.proxyType || '-'}</div>
+          ${a.proxyExpiration ? `<div><strong style="color:#666;font-size:10px">Proxy Exp:</strong><br><span style="color:${proxyExpired ? '#f00' : '#0f0'}">${a.proxyExpiration}${proxyExpired ? ' ⚠' : ''}</span></div>` : '<div></div>'}
+        </div>
+        ${a.proxyDetails ? `<div style="margin-bottom:8px"><strong style="color:#666;font-size:10px">Proxy Details:</strong><br><code style="font-size:10px">${a.proxyDetails}</code></div>` : ''}
+        ${a.outreachMethod ? `<div style="margin-top:8px;padding:8px;background:#0a0a0a;border:1px solid #222;border-radius:3px;font-size:11px"><strong style="color:#666;font-size:9px">Outreach Method:</strong><br>${a.outreachMethod}</div>` : ''}
+        ${a.notes ? `<div style="margin-top:8px;padding:8px;background:#0a0a0a;border:1px solid #222;border-radius:3px;font-size:11px"><strong style="color:#666;font-size:9px">Notes:</strong><br>${a.notes}</div>` : ''}
       </div>
       <div class="acc-card-actions">
         <button class="btn btn-sm" onclick="editOutreachAcc('${a.id}')">Edit</button>
