@@ -7,20 +7,26 @@ const DB = {
     this.db = firebase.firestore();
 
     // Check for persistent session (Remember Me)
-    const saved = localStorage.getItem('teamUser');
+    const savedLocal = localStorage.getItem('teamUser');
+    const savedSession = sessionStorage.getItem('teamUser');
     const rememberMe = localStorage.getItem('teamRememberMe');
 
-    if (saved && rememberMe === 'true') {
-      // Restore persistent session
-      this.user = JSON.parse(saved);
-      console.log('🔐 Restored session for:', this.user.id);
-    } else if (saved && rememberMe === 'false') {
-      // Session exists but Remember Me was off - clear it
+    if (savedLocal && rememberMe === 'true') {
+      // Restore persistent session (Remember Me was ON)
+      this.user = JSON.parse(savedLocal);
+      console.log('🔐 Restored persistent session for:', this.user.id);
+    } else if (savedSession && rememberMe === 'false') {
+      // Restore temporary session (Remember Me was OFF)
+      this.user = JSON.parse(savedSession);
+      console.log('🔐 Restored temporary session for:', this.user.id);
+    } else if (savedLocal && rememberMe === 'false') {
+      // Old data in localStorage but Remember Me is OFF - clear it
       localStorage.removeItem('teamUser');
       this.user = null;
-    } else if (saved) {
+    } else if (savedLocal) {
       // Old sessions (before Remember Me feature) - keep them for backwards compatibility
-      this.user = JSON.parse(saved);
+      this.user = JSON.parse(savedLocal);
+      console.log('🔐 Restored legacy session for:', this.user.id);
     }
   },
 
