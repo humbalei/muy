@@ -1509,10 +1509,20 @@ async function loadScripts() {
   const scripts = await DB.getScripts('script');
 
   let html = '';
-  scripts.forEach(s => {
+  for (const s of scripts) {
+    let accountName = '';
+    if (s.accountId) {
+      const acc = await DB.get('accounts', s.accountId);
+      if (acc) accountName = `@${acc.username}`;
+    }
+
     html += `<div class="script-box" onclick="copyToClipboard('${encodeURIComponent(s.text)}')">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <strong>${s.title || 'Script'}</strong>
+        <div>
+          <strong>${s.title || 'Script'}</strong>
+          ${s.platform ? `<span class="status status-${s.platform === 'instagram' ? 'healthy' : s.platform === 'twitter' ? 'pending' : 'live'}" style="margin-left:8px;font-size:10px">${s.platform}</span>` : ''}
+          ${accountName ? `<span style="color:#999;margin-left:8px;font-size:11px">→ ${accountName}</span>` : ''}
+        </div>
         <div style="display:flex;gap:5px">
           <button class="btn btn-sm" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();editScript('${s.id}','script')">Edit</button>
           <button class="btn btn-sm" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();deleteScript('${s.id}','script')">Delete</button>
@@ -1523,7 +1533,7 @@ async function loadScripts() {
       ${s.notes ? `<div style="margin-top:6px;padding:6px;background:#0a0a0a;border:1px solid #222;font-size:10px;color:#666">${s.notes}</div>` : ''}
       <div style="margin-top:8px;font-size:10px;color:#666">Click to copy</div>
     </div>`;
-  });
+  }
   document.getElementById('scriptList').innerHTML = html || '<div class="empty-state">No scripts</div>';
 }
 
@@ -2474,6 +2484,23 @@ async function modal(type, data) {
             <option value="content">Content Discussion</option>
             <option value="other">Other</option>
           </select>
+        </div>
+        <div class="grid grid-2">
+          <div class="form-group">
+            <label class="form-label">Platform:</label>
+            <select class="form-select" id="scriptPlat">
+              <option value="">All Platforms</option>
+              <option value="instagram">Instagram</option>
+              <option value="twitter">Twitter</option>
+              <option value="webcam">Webcam</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Assign to Account:</label>
+            <select class="form-select" id="scriptAccount">
+              ${accountOptions}
+            </select>
+          </div>
         </div>`}
         <div class="form-group">
           <label class="form-label">Text:</label>
@@ -2536,6 +2563,23 @@ async function modal(type, data) {
             <option value="content" ${data.category === 'content' ? 'selected' : ''}>Content Discussion</option>
             <option value="other" ${data.category === 'other' ? 'selected' : ''}>Other</option>
           </select>
+        </div>
+        <div class="grid grid-2">
+          <div class="form-group">
+            <label class="form-label">Platform:</label>
+            <select class="form-select" id="scriptPlat">
+              <option value="" ${!data.platform ? 'selected' : ''}>All Platforms</option>
+              <option value="instagram" ${data.platform === 'instagram' ? 'selected' : ''}>Instagram</option>
+              <option value="twitter" ${data.platform === 'twitter' ? 'selected' : ''}>Twitter</option>
+              <option value="webcam" ${data.platform === 'webcam' ? 'selected' : ''}>Webcam</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Assign to Account:</label>
+            <select class="form-select" id="scriptAccount">
+              ${accountOptionsEdit}
+            </select>
+          </div>
         </div>`}
         <div class="form-group">
           <label class="form-label">Text:</label>
@@ -3730,6 +3774,8 @@ async function saveScript(type) {
   if (type === 'script') {
     data.title = document.getElementById('scriptTitle')?.value?.trim() || '';
     data.category = document.getElementById('scriptCategory')?.value || 'other';
+    data.platform = document.getElementById('scriptPlat')?.value || '';
+    data.accountId = document.getElementById('scriptAccount')?.value || null;
   } else {
     // Opener or followup
     data.platform = document.getElementById('scriptPlat')?.value || '';
@@ -3764,6 +3810,8 @@ async function updateScript(type) {
   if (type === 'script') {
     data.title = document.getElementById('scriptTitle')?.value?.trim() || '';
     data.category = document.getElementById('scriptCategory')?.value || 'other';
+    data.platform = document.getElementById('scriptPlat')?.value || '';
+    data.accountId = document.getElementById('scriptAccount')?.value || null;
   } else {
     // Opener or followup
     data.platform = document.getElementById('scriptPlat')?.value || '';
