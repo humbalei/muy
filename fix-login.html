@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FIX LOGIN</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #000;
+      color: #0f0;
+      font-family: 'Courier New', monospace;
+      padding: 20px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    h1 { color: #0f0; margin-bottom: 20px; font-size: 24px; text-align: center; }
+    .btn {
+      background: #0f0;
+      color: #000;
+      border: none;
+      padding: 15px 30px;
+      font-family: 'Courier New', monospace;
+      font-weight: bold;
+      font-size: 16px;
+      cursor: pointer;
+      width: 100%;
+      margin: 10px 0;
+    }
+    .log {
+      background: #0a0a0a;
+      border: 1px solid #0f0;
+      padding: 15px;
+      margin: 15px 0;
+      max-height: 400px;
+      overflow-y: auto;
+      font-size: 12px;
+    }
+    .success { color: #0f0; }
+    .error { color: #f55; }
+    .warning { color: #ff0; }
+    .info { color: #09f; }
+    input {
+      width: 100%;
+      padding: 12px;
+      background: #0a0a0a;
+      border: 1px solid #0f0;
+      color: #0f0;
+      font-family: 'Courier New', monospace;
+      font-size: 16px;
+      margin: 10px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔧 FIX LOGIN TOOL</h1>
+
+  <button class="btn" onclick="step1()">STEP 1: TEST FIREBASE CONNECTION</button>
+  <button class="btn" onclick="step2()">STEP 2: CREATE DEFAULT USERS</button>
+  <button class="btn" onclick="step3()">STEP 3: TEST LOGIN</button>
+
+  <div style="margin: 20px 0;">
+    <input type="text" id="testUser" placeholder="Username" value="admin">
+    <input type="password" id="testPass" placeholder="Password" value="Zuzufull981">
+  </div>
+
+  <button class="btn" onclick="manualLogin()">🚀 MANUAL LOGIN TEST</button>
+  <button class="btn" onclick="clearAll()">🗑️ CLEAR LOG</button>
+
+  <div class="log" id="log"></div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="js/config.js?v=1007"></script>
+
+  <script>
+    const logEl = document.getElementById('log');
+
+    function log(msg, type = 'info') {
+      const div = document.createElement('div');
+      div.className = type;
+      div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      logEl.appendChild(div);
+      logEl.scrollTop = logEl.scrollHeight;
+      console.log(msg);
+    }
+
+    function clearAll() {
+      logEl.innerHTML = '';
+    }
+
+    log('🔧 FIX LOGIN TOOL LOADED', 'success');
+    log('Version: v1007', 'info');
+
+    // Step 1: Test Firebase Connection
+    async function step1() {
+      log('\n=== STEP 1: TEST FIREBASE CONNECTION ===', 'warning');
+
+      try {
+        log('Initializing Firebase...', 'info');
+        firebase.initializeApp(CONFIG.firebase);
+        log('✅ Firebase initialized', 'success');
+
+        const db = firebase.firestore();
+        log('✅ Firestore instance created', 'success');
+
+        log('Testing network connection...', 'info');
+        await db.enableNetwork();
+        log('✅ Network enabled', 'success');
+
+        log('Testing read access...', 'info');
+        const testRef = db.collection('users').limit(1);
+        const snapshot = await testRef.get();
+        log('✅ Read access works!', 'success');
+        log(`Found ${snapshot.size} users`, 'info');
+
+        log('\n✅✅✅ FIREBASE CONNECTION WORKS! ✅✅✅', 'success');
+        return db;
+      } catch (err) {
+        log(`❌ ERROR: ${err.message}`, 'error');
+        log(`Error code: ${err.code}`, 'error');
+        log(`Error details: ${JSON.stringify(err)}`, 'error');
+        return null;
+      }
+    }
+
+    // Step 2: Create Default Users
+    async function step2() {
+      log('\n=== STEP 2: CREATE DEFAULT USERS ===', 'warning');
+
+      try {
+        let db;
+        try {
+          db = firebase.firestore();
+        } catch (e) {
+          log('Firebase not initialized, initializing now...', 'info');
+          firebase.initializeApp(CONFIG.firebase);
+          db = firebase.firestore();
+          await db.enableNetwork();
+        }
+
+        const users = [
+          { id: 'admin', password: 'Zuzufull981', role: 'admin' },
+          { id: 'muy', password: 'MuyPass123', role: 'assistant' }
+        ];
+
+        for (const user of users) {
+          log(`\nCreating/updating user: ${user.id}`, 'info');
+
+          try {
+            await db.collection('users').doc(user.id).set({
+              password: user.password,
+              role: user.role
+            });
+            log(`✅ User ${user.id} created/updated`, 'success');
+            log(`   Password: ${user.password}`, 'success');
+            log(`   Role: ${user.role}`, 'success');
+          } catch (err) {
+            log(`❌ Failed to create ${user.id}: ${err.message}`, 'error');
+          }
+        }
+
+        log('\n✅✅✅ USERS CREATED! ✅✅✅', 'success');
+      } catch (err) {
+        log(`❌ ERROR: ${err.message}`, 'error');
+      }
+    }
+
+    // Step 3: Test Login
+    async function step3() {
+      log('\n=== STEP 3: TEST LOGIN ===', 'warning');
+
+      const username = document.getElementById('testUser').value.trim();
+      const password = document.getElementById('testPass').value;
+
+      log(`Testing login for: ${username}`, 'info');
+      log(`Password: ${password}`, 'info');
+
+      try {
+        let db;
+        try {
+          db = firebase.firestore();
+        } catch (e) {
+          firebase.initializeApp(CONFIG.firebase);
+          db = firebase.firestore();
+          await db.enableNetwork();
+        }
+
+        log('Fetching user from database...', 'info');
+        const doc = await db.collection('users').doc(username.toLowerCase()).get();
+
+        if (!doc.exists) {
+          log(`❌ USER NOT FOUND: ${username}`, 'error');
+          log('Run STEP 2 to create users first!', 'warning');
+          return;
+        }
+
+        log('✅ User found!', 'success');
+        const data = doc.data();
+        log(`Stored password: ${data.password}`, 'info');
+        log(`Your password: ${password}`, 'info');
+        log(`Match: ${data.password === password}`, 'info');
+
+        if (data.password === password) {
+          log('\n✅✅✅ LOGIN SUCCESS! ✅✅✅', 'success');
+          log(`Role: ${data.role}`, 'success');
+          log('\n🎉 YOU CAN NOW LOGIN AT index.html', 'success');
+        } else {
+          log('\n❌ WRONG PASSWORD!', 'error');
+          log(`Expected: "${data.password}"`, 'error');
+          log(`Got: "${password}"`, 'error');
+        }
+      } catch (err) {
+        log(`❌ ERROR: ${err.message}`, 'error');
+        log(`Error code: ${err.code}`, 'error');
+      }
+    }
+
+    // Manual Login Test
+    async function manualLogin() {
+      await step1();
+      await step2();
+      await step3();
+    }
+
+    // Auto-run on load
+    setTimeout(() => {
+      log('\n🚀 AUTO-RUNNING ALL STEPS...', 'warning');
+      manualLogin();
+    }, 1000);
+  </script>
+</body>
+</html>
