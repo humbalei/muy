@@ -2667,38 +2667,38 @@ async function modal(type, data) {
 
     case 'outseeker':
       title.textContent = data ? 'Edit Outseeker Log' : 'Log Outseeker Data';
-      const isEdit = data && data.id;
+      const isEditOutseeker = data && data.id;
       body.innerHTML = `
-        ${isEdit ? `<input type="hidden" id="osEditId" value="${data.id}">` : ''}
+        ${isEditOutseeker ? `<input type="hidden" id="osEditId" value="${data.id}">` : ''}
         <div class="form-group">
           <label class="form-label">Active OF Accounts (Total):</label>
-          <input type="number" class="form-input" id="osAcc" value="${isEdit ? data.activeAccounts || 0 : 0}" min="0">
+          <input type="number" class="form-input" id="osAcc" value="${isEditOutseeker ? data.activeAccounts || 0 : 0}" min="0">
         </div>
         <div class="grid grid-2">
           <div class="form-group">
             <label class="form-label">USA Running Today:</label>
-            <input type="number" class="form-input" id="osUSAIn" value="${isEdit ? data.usaRunning || 0 : 0}" min="0">
+            <input type="number" class="form-input" id="osUSAIn" value="${isEditOutseeker ? data.usaRunning || 0 : 0}" min="0">
           </div>
           <div class="form-group">
             <label class="form-label">ESP Running Today:</label>
-            <input type="number" class="form-input" id="osESPIn" value="${isEdit ? data.espRunning || 0 : 0}" min="0">
+            <input type="number" class="form-input" id="osESPIn" value="${isEditOutseeker ? data.espRunning || 0 : 0}" min="0">
           </div>
         </div>
         <div class="grid grid-2">
           <div class="form-group">
             <label class="form-label">Outreached Today (USA):</label>
-            <input type="number" class="form-input" id="osOutreachedUSA" value="${isEdit ? data.usaOutreached || 0 : 0}" min="0">
+            <input type="number" class="form-input" id="osOutreachedUSA" value="${isEditOutseeker ? data.usaOutreached || 0 : 0}" min="0">
           </div>
           <div class="form-group">
             <label class="form-label">Outreached Today (ESP):</label>
-            <input type="number" class="form-input" id="osOutreachedESP" value="${isEdit ? data.espOutreached || 0 : 0}" min="0">
+            <input type="number" class="form-input" id="osOutreachedESP" value="${isEditOutseeker ? data.espOutreached || 0 : 0}" min="0">
           </div>
         </div>
         <div class="form-group">
           <label class="form-label">Notes (optional):</label>
-          <textarea class="form-textarea" id="osNotes" style="min-height:60px" placeholder="Poznámky k dnešnímu dni...">${isEdit ? data.notes || '' : ''}</textarea>
+          <textarea class="form-textarea" id="osNotes" style="min-height:60px" placeholder="Poznámky k dnešnímu dni...">${isEditOutseeker ? data.notes || '' : ''}</textarea>
         </div>
-        <button class="btn btn-primary" onclick="saveOutseeker()">${isEdit ? 'Update' : 'Save'} Data</button>
+        <button class="btn btn-primary" onclick="saveOutseeker()">${isEditOutseeker ? 'Update' : 'Save'} Data</button>
       `;
       break;
 
