@@ -1880,6 +1880,8 @@ async function delScript(id) {
 // ============================================
 // LEADS
 // ============================================
+let currentExpandedCollection = null;
+
 async function loadLeads() {
   const collections = await DB.getAll('lead_collections', [{ field: 'userId', value: userId }]);
 
@@ -1888,122 +1890,245 @@ async function loadLeads() {
     const leads = await DB.getAll('leads', [{ field: 'collectionId', value: coll.id }]);
     const outreached = leads.filter(l => l.outreached).length;
     const total = leads.length;
+    const isExpanded = currentExpandedCollection === coll.id;
 
-    // Get account names
-    let accountNames = [];
-    if (coll.accountIds && coll.accountIds.length > 0) {
-      const accounts = await DB.getAll('accounts', [{ field: 'userId', value: userId }]);
-      accountNames = accounts.filter(a => coll.accountIds.includes(a.id)).map(a => `@${a.username}`);
-    }
+    const platformColor = coll.platform === 'instagram' ? '#E1306C' :
+                          coll.platform === 'twitter' ? '#1DA1F2' : '#FF5722';
+    const platformLabel = coll.platform === 'instagram' ? '📷 Instagram' :
+                          coll.platform === 'twitter' ? '🐦 Twitter' : '🎥 Webcams';
 
-    const platformBadge = coll.platform === 'instagram' ? '📷 Instagram' :
-                          coll.platform === 'twitter' ? '🐦 Twitter' :
-                          '🎥 Webcams';
-
-    html += `<div class="box" style="cursor:pointer" onclick="viewLeadCollection('${coll.id}')">
-      <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:10px">
-        <h3 style="color:#0f0;margin:0;font-size:14px">${coll.name}</h3>
-        <span style="font-size:10px;background:#333;padding:3px 8px;border-radius:3px">${platformBadge}</span>
+    html += `<div style="margin-bottom:20px;border:2px solid ${platformColor};border-radius:6px;background:#0a0a0a;overflow:hidden">
+      <!-- Collection Header -->
+      <div style="padding:15px;background:linear-gradient(135deg, #0a0a0a 0%, #111 100%);cursor:pointer" onclick="toggleCollection('${coll.id}')">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="flex:1">
+            <h3 style="color:#0f0;margin:0 0 8px 0;font-size:16px;display:flex;align-items:center;gap:12px">
+              <span style="font-size:22px;transition:transform 0.3s;transform:rotate(${isExpanded ? '90' : '0'}deg)">▶</span>
+              ${coll.name}
+              <span style="font-size:12px;background:${platformColor};color:#fff;padding:5px 12px;border-radius:4px">${platformLabel}</span>
+            </h3>
+            <div style="display:flex;gap:20px;font-size:12px;color:#999">
+              <span>📊 Total: <strong style="color:#0f0">${total}</strong></span>
+              <span>✅ Done: <strong style="color:#ff0">${outreached}</strong></span>
+              <span>⏳ Pending: <strong style="color:#f55">${total - outreached}</strong></span>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px" onclick="event.stopPropagation()">
+            <button class="btn btn-sm" style="font-size:11px;padding:6px 12px" onclick="editCollection('${coll.id}')">✏️ Edit</button>
+            <button class="btn btn-sm" style="font-size:11px;padding:6px 12px;background:#f55;color:#fff" onclick="deleteLeadCollection('${coll.id}')">🗑️</button>
+          </div>
+        </div>
       </div>
-      <div style="font-size:11px;color:#999;margin-bottom:8px">
-        <div><strong>Leads:</strong> ${total} (${outreached} outreached)</div>
-        ${accountNames.length > 0 ? `<div><strong>Accounts:</strong> ${accountNames.join(', ')}</div>` : '<div style="color:#666">No accounts assigned</div>'}
-      </div>
-      <div style="display:flex;gap:5px;margin-top:10px" onclick="event.stopPropagation()">
-        <button class="btn btn-sm" style="flex:1;font-size:10px" onclick="modal('leadCollection',${JSON.stringify(coll).replace(/"/g, '&quot;')})">Edit</button>
-        <button class="btn btn-sm" style="flex:1;font-size:10px" onclick="deleteLeadCollection('${coll.id}')">Delete</button>
+
+      <!-- Leads Table (expandable) -->
+      <div id="coll-${coll.id}" style="display:${isExpanded ? 'block' : 'none'}">
+        <div style="padding:0 15px 15px 15px">
+          <div style="margin-bottom:12px;padding-top:12px">
+            <button class="btn btn-primary btn-sm" onclick="showAddLeadForm('${coll.id}','${coll.platform}')">+ Add Lead</button>
+          </div>
+
+          <!-- Add Lead Form (inline) -->
+          <div id="addLeadForm-${coll.id}" style="display:none;margin-bottom:15px;padding:15px;background:#111;border:2px solid #0f0;border-radius:4px">
+            <input type="hidden" id="editLeadId-${coll.id}">
+            <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:10px;margin-bottom:10px">
+              <input type="text" class="form-input" id="leadName-${coll.id}" placeholder="Model Name" style="font-size:11px">
+              <input type="text" class="form-input" id="leadUsername-${coll.id}" placeholder="@username" style="font-size:11px">
+              <input type="text" class="form-input" id="leadNotes-${coll.id}" placeholder="Notes (optional)" style="font-size:11px">
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#ccc;cursor:pointer">
+                <input type="checkbox" id="leadOutreached-${coll.id}" style="width:16px;height:16px">
+                Already Outreached
+              </label>
+              <button class="btn btn-primary btn-sm" onclick="saveLeadInline('${coll.id}','${coll.platform}')" style="margin-left:auto">
+                <span id="saveLeadBtn-${coll.id}">Add Lead</span>
+              </button>
+              <button class="btn btn-sm" onclick="cancelAddLeadForm('${coll.id}')">Cancel</button>
+            </div>
+          </div>
+
+          <!-- Leads Table -->
+          ${leads.length > 0 ? `
+            <div style="background:#000;border:1px solid #333;border-radius:4px;overflow:hidden">
+              <table style="width:100%;border-collapse:collapse">
+                <thead>
+                  <tr style="background:#0a0a0a;border-bottom:2px solid #333">
+                    <th style="padding:10px;text-align:left;font-size:11px;color:#999;font-weight:normal">NAME</th>
+                    <th style="padding:10px;text-align:left;font-size:11px;color:#999;font-weight:normal">${coll.platform.toUpperCase()}</th>
+                    <th style="padding:10px;text-align:left;font-size:11px;color:#999;font-weight:normal">NOTES</th>
+                    <th style="padding:10px;text-align:center;font-size:11px;color:#999;font-weight:normal">STATUS</th>
+                    <th style="padding:10px;text-align:center;font-size:11px;color:#999;font-weight:normal;width:80px">✓</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${leads.map((lead, idx) => {
+                    const username = coll.platform === 'instagram' ? lead.igUsername :
+                                    coll.platform === 'twitter' ? lead.twitterUsername :
+                                    lead.webcamUsername;
+                    const rowBg = idx % 2 === 0 ? '#0a0a0a' : '#000';
+                    return `<tr style="background:${rowBg};border-bottom:1px solid #222;transition:background 0.2s" onmouseover="this.style.background='#111'" onmouseout="this.style.background='${rowBg}'">
+                      <td style="padding:12px;font-size:12px;color:#0f0;font-weight:bold">${lead.name}</td>
+                      <td style="padding:12px;font-size:11px;color:#ccc">${username || '-'}</td>
+                      <td style="padding:12px;font-size:10px;color:#666">${lead.notes || '-'}</td>
+                      <td style="padding:12px;text-align:center">
+                        <span style="font-size:11px;padding:4px 10px;border-radius:3px;background:${lead.outreached ? '#001a00' : '#1a0a0a'};color:${lead.outreached ? '#0f0' : '#f55'};border:1px solid ${lead.outreached ? '#0f0' : '#f55'};font-weight:bold">
+                          ${lead.outreached ? 'YES' : 'NO'}
+                        </span>
+                      </td>
+                      <td style="padding:12px;text-align:center">
+                        <input type="checkbox" ${lead.outreached ? 'checked' : ''} onchange="toggleLeadOutreach('${lead.id}','${coll.id}',this.checked)" style="width:20px;height:20px;cursor:pointer;accent-color:#0f0">
+                      </td>
+                    </tr>`;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+          ` : '<div class="empty-state" style="padding:30px">No leads yet. Click "Add Lead" to start!</div>'}
+        </div>
       </div>
     </div>`;
   }
 
-  document.getElementById('leadsCollectionList').innerHTML = html || '<div class="empty-state">No lead collections yet. Create one to start!</div>';
+  document.getElementById('leadsCollectionList').innerHTML = html || '<div class="empty-state">No collections yet. Click "Create Collection" above!</div>';
 }
 
-async function viewLeadCollection(collId) {
-  const coll = await DB.get('lead_collections', collId);
-  if (!coll) {
-    toast('Collection not found', 'error');
+function toggleCollection(collId) {
+  currentExpandedCollection = currentExpandedCollection === collId ? null : collId;
+  loadLeads();
+}
+
+function showAddLeadForm(collId, platform) {
+  const form = document.getElementById(`addLeadForm-${collId}`);
+  form.style.display = 'block';
+  document.getElementById(`editLeadId-${collId}`).value = '';
+  document.getElementById(`leadName-${collId}`).value = '';
+  document.getElementById(`leadUsername-${collId}`).value = '';
+  document.getElementById(`leadNotes-${collId}`).value = '';
+  document.getElementById(`leadOutreached-${collId}`).checked = false;
+  document.getElementById(`saveLeadBtn-${collId}`).textContent = 'Add Lead';
+}
+
+function cancelAddLeadForm(collId) {
+  document.getElementById(`addLeadForm-${collId}`).style.display = 'none';
+}
+
+async function saveLeadInline(collId, platform) {
+  const editId = document.getElementById(`editLeadId-${collId}`).value;
+  const name = document.getElementById(`leadName-${collId}`).value.trim();
+  const username = document.getElementById(`leadUsername-${collId}`).value.trim();
+  const notes = document.getElementById(`leadNotes-${collId}`).value.trim();
+  const outreached = document.getElementById(`leadOutreached-${collId}`).checked;
+
+  if (!name) {
+    toast('Name is required', 'error');
     return;
   }
 
-  const leads = await DB.getAll('leads', [{ field: 'collectionId', value: collId }]);
+  const data = {
+    userId: userId,
+    collectionId: collId,
+    name: name,
+    igUsername: platform === 'instagram' ? username : '',
+    twitterUsername: platform === 'twitter' ? username : '',
+    webcamUsername: platform === 'webcams' ? username : '',
+    notes: notes,
+    outreached: outreached,
+    addedDate: editId ? undefined : new Date().toISOString()
+  };
 
-  const m = document.getElementById('modal');
-  const title = document.getElementById('mTitle');
-  const body = document.getElementById('mBody');
+  if (editId) {
+    await DB.update('leads', editId, data);
+    toast('Lead updated!', 'success');
+  } else {
+    await DB.add('leads', data);
+    toast('Lead added!', 'success');
+  }
 
-  title.textContent = `${coll.name} - Leads`;
-  document.getElementById('mBox').className = 'modal-box large';
+  cancelAddLeadForm(collId);
+  currentExpandedCollection = collId;
+  loadLeads();
+}
 
-  const platformBadge = coll.platform === 'instagram' ? '📷 Instagram' :
-                        coll.platform === 'twitter' ? '🐦 Twitter' :
-                        '🎥 Webcams';
+async function toggleLeadOutreach(leadId, collId, checked) {
+  await DB.update('leads', leadId, { outreached: checked });
+  toast(checked ? 'Marked as outreached ✅' : 'Marked as pending ⏳', 'success');
+  currentExpandedCollection = collId;
+  loadLeads();
+}
 
-  let leadsHtml = '';
-  leads.forEach(lead => {
-    leadsHtml += `<div style="padding:10px;background:#0a0a0a;border:1px solid #333;border-radius:3px;margin-bottom:8px">
-      <div style="display:flex;justify-content:space-between;align-items:start">
-        <div style="flex:1">
-          <div style="font-size:12px;color:#0f0;font-weight:bold">${lead.name}</div>
-          <div style="font-size:11px;color:#999;margin-top:3px">
-            ${coll.platform === 'instagram' && lead.igUsername ? `<div>IG: @${lead.igUsername}</div>` : ''}
-            ${coll.platform === 'twitter' && lead.twitterUsername ? `<div>TW: @${lead.twitterUsername}</div>` : ''}
-            ${coll.platform === 'webcams' && lead.webcamUsername ? `<div>Webcam: ${lead.webcamUsername}</div>` : ''}
-            ${lead.notes ? `<div style="margin-top:5px;color:#666;font-size:10px">${lead.notes}</div>` : ''}
-          </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:10px">
-          <span style="font-size:10px;padding:3px 8px;border-radius:3px;background:${lead.outreached ? '#001a00' : '#1a0a0a'};color:${lead.outreached ? '#0f0' : '#f55'};border:1px solid ${lead.outreached ? '#0f0' : '#f55'}">
-            ${lead.outreached ? '✅ Outreached' : '⏳ Pending'}
-          </span>
-          <button class="btn btn-sm" style="font-size:9px;padding:3px 8px" onclick="modal('leadItem',${JSON.stringify({...lead, collectionId: collId, platform: coll.platform}).replace(/"/g, '&quot;')})">Edit</button>
-          <button class="btn btn-sm" style="font-size:9px;padding:3px 8px" onclick="deleteLead('${lead.id}','${collId}')">✕</button>
-        </div>
-      </div>
-    </div>`;
-  });
+function toggleCollectionForm() {
+  const form = document.getElementById('collectionForm');
+  const isVisible = form.style.display !== 'none';
+  form.style.display = isVisible ? 'none' : 'block';
+  document.getElementById('collFormBtnText').textContent = isVisible ? '+ Create Collection' : '✕ Cancel';
 
-  body.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;padding:12px;background:#0a0a0a;border:1px solid #333;border-radius:4px">
-      <div>
-        <span style="font-size:12px;font-weight:bold;color:#0f0">${platformBadge}</span>
-        <div style="font-size:10px;color:#999;margin-top:3px">${leads.length} leads (${leads.filter(l => l.outreached).length} outreached)</div>
-      </div>
-      <button class="btn btn-primary btn-sm" onclick="modal('leadItem',{collectionId:'${collId}',platform:'${coll.platform}'})">Add Lead</button>
-    </div>
+  if (!isVisible) {
+    document.getElementById('collFormTitle').textContent = 'Create New Collection';
+    document.getElementById('collSaveBtnText').textContent = 'Create Collection';
+    document.getElementById('collEditId').value = '';
+    document.getElementById('collName').value = '';
+    document.getElementById('collPlatform').value = 'instagram';
 
-    <div style="max-height:500px;overflow-y:auto">
-      ${leadsHtml || '<div class="empty-state">No leads in this collection yet</div>'}
-    </div>
+    DB.getAll('accounts', [{ field: 'userId', value: userId }]).then(accounts => {
+      const wrap = document.getElementById('collAccountsWrap');
+      if (accounts.length === 0) {
+        wrap.innerHTML = '<div style="color:#666;font-size:11px;text-align:center;padding:10px">No accounts available</div>';
+        return;
+      }
+      wrap.innerHTML = accounts.map(acc => `
+        <label style="display:flex;align-items:center;gap:8px;margin:6px 0;cursor:pointer;padding:6px;border-radius:3px" onmouseover="this.style.background='#111'" onmouseout="this.style.background='transparent'">
+          <input type="checkbox" class="collAccCheck" value="${acc.id}" style="width:16px;height:16px">
+          <span style="font-size:11px;color:#ccc">@${acc.username} <span style="color:#666">(${acc.type})</span></span>
+        </label>
+      `).join('');
+    });
+  }
+}
 
-    <div style="display:flex;gap:10px;margin-top:20px">
-      <button class="btn" onclick="closeModal();loadLeads()">Close</button>
-    </div>
-  `;
+function cancelCollectionForm() {
+  document.getElementById('collectionForm').style.display = 'none';
+  document.getElementById('collFormBtnText').textContent = '+ Create Collection';
+}
 
-  m.classList.add('active');
+async function editCollection(collId) {
+  const coll = await DB.get('lead_collections', collId);
+  if (!coll) return;
+
+  document.getElementById('collectionForm').style.display = 'block';
+  document.getElementById('collFormTitle').textContent = 'Edit Collection';
+  document.getElementById('collFormBtnText').textContent = '✕ Cancel';
+  document.getElementById('collSaveBtnText').textContent = 'Update Collection';
+  document.getElementById('collEditId').value = coll.id;
+  document.getElementById('collName').value = coll.name;
+  document.getElementById('collPlatform').value = coll.platform;
+
+  const accounts = await DB.getAll('accounts', [{ field: 'userId', value: userId }]);
+  const wrap = document.getElementById('collAccountsWrap');
+  if (accounts.length === 0) {
+    wrap.innerHTML = '<div style="color:#666;font-size:11px;text-align:center;padding:10px">No accounts available</div>';
+    return;
+  }
+  wrap.innerHTML = accounts.map(acc => {
+    const checked = coll.accountIds && coll.accountIds.includes(acc.id);
+    return `<label style="display:flex;align-items:center;gap:8px;margin:6px 0;cursor:pointer;padding:6px;border-radius:3px" onmouseover="this.style.background='#111'" onmouseout="this.style.background='transparent'">
+      <input type="checkbox" class="collAccCheck" value="${acc.id}" ${checked ? 'checked' : ''} style="width:16px;height:16px">
+      <span style="font-size:11px;color:#ccc">@${acc.username} <span style="color:#666">(${acc.type})</span></span>
+    </label>`;
+  }).join('');
+
+  document.getElementById('collectionForm').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 async function deleteLeadCollection(collId) {
   if (!confirm('Delete this collection and all its leads?')) return;
-
-  // Delete all leads in collection
   const leads = await DB.getAll('leads', [{ field: 'collectionId', value: collId }]);
   for (const lead of leads) {
     await DB.delete('leads', lead.id);
   }
-
-  // Delete collection
   await DB.delete('lead_collections', collId);
   toast('Collection deleted', 'success');
+  currentExpandedCollection = null;
   loadLeads();
-}
-
-async function deleteLead(leadId, collId) {
-  if (!confirm('Delete this lead?')) return;
-  await DB.delete('leads', leadId);
-  toast('Lead deleted', 'success');
-  viewLeadCollection(collId);
 }
 
 // ============================================
