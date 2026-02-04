@@ -2,9 +2,27 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>TEAM - Login</title>
+
+  <!-- PWA Meta Tags -->
+  <meta name="description" content="Team management and productivity tracking application">
+  <meta name="theme-color" content="#00ff00">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="TEAM">
+
+  <!-- Icons -->
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="apple-touch-icon" href="icons/icon.svg">
+  <link rel="apple-touch-icon" sizes="152x152" href="icons/icon.svg">
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/icon.svg">
+  <link rel="apple-touch-icon" sizes="167x167" href="icons/icon.svg">
+
+  <!-- Manifest -->
+  <link rel="manifest" href="manifest.json">
+
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body class="login-page">
@@ -21,6 +39,12 @@
           <label class="form-label">Password:</label>
           <input type="password" class="form-input" id="password">
         </div>
+        <div class="form-group" style="margin-top:10px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;color:#0f0;font-size:12px">
+            <input type="checkbox" id="rememberMe" checked style="width:16px;height:16px;cursor:pointer;accent-color:#0f0">
+            <span>Remember Me (Stay logged in)</span>
+          </label>
+        </div>
         <button type="submit" class="btn btn-primary" style="width:100%" id="loginBtn">Login</button>
       </form>
       <div class="login-error" id="error"></div>
@@ -31,6 +55,18 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="js/config.js"></script>
   <script src="js/db.js"></script>
+
+  <!-- PWA Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then(reg => console.log('✅ Service Worker registered:', reg.scope))
+          .catch(err => console.log('❌ Service Worker registration failed:', err));
+      });
+    }
+  </script>
+
   <script>
     DB.init();
     if (DB.isLoggedIn()) {
@@ -45,9 +81,11 @@
       btn.disabled = true;
       btn.textContent = 'Loading...';
 
+      const rememberMe = document.getElementById('rememberMe').checked;
       const r = await DB.login(
         document.getElementById('username').value.trim(),
-        document.getElementById('password').value
+        document.getElementById('password').value,
+        rememberMe
       );
 
       if (r.success) {

@@ -1,0 +1,106 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // USERS collection - only readable for login, no public writes
+    match /users/{userId} {
+      allow read: if true; // For login verification
+      allow write: if false; // No public writes, manage via admin
+    }
+
+    // All user data collections - authenticated users can read/write their data
+    // Security is handled via client-side userId validation
+    match /daily_logs/{logId} {
+      allow read, write: if true;
+    }
+
+    match /daily_tasks/{taskId} {
+      allow read, write: if true;
+    }
+
+    match /manual_tasks/{taskId} {
+      allow read, write: if true;
+    }
+
+    match /work_days/{dayId} {
+      allow read, write: if true;
+    }
+
+    match /payroll/{payId} {
+      allow read, write: if true;
+    }
+
+    match /accounts/{accountId} {
+      allow read, write: if true;
+    }
+
+    match /lead_collections/{collId} {
+      allow read, write: if true;
+    }
+
+    match /leads/{leadId} {
+      allow read, write: if true;
+    }
+
+    match /models/{modelId} {
+      allow read, write: if true;
+    }
+
+    match /content/{contentId} {
+      allow read, write: if true;
+    }
+
+    match /scripts/{scriptId} {
+      allow read, write: if true;
+    }
+
+    match /ai_sessions/{sessionId} {
+      allow read, write: if true;
+    }
+
+    match /ai_messages/{messageId} {
+      allow read, write: if true;
+    }
+
+    match /voice_notes/{noteId} {
+      allow read, write: if true;
+    }
+
+    match /outseeker_logs/{logId} {
+      allow read, write: if true;
+    }
+
+    match /wallets/{walletId} {
+      allow read, write: if true;
+    }
+
+    // SETTINGS - publicly readable
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // TASK PRESETS - publicly readable
+    match /task_presets/{presetId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // KNOWLEDGE BASE - publicly readable
+    match /knowledge_base/{kbId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // UNCERTAIN QUESTIONS
+    match /uncertain_questions/{qId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Default deny all other collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

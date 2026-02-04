@@ -1,3 +1,46 @@
 /*
-  Cross-Origin-Opener-Policy: same-origin
-  Cross-Origin-Embedder-Policy: credentialless
+  # Security Headers
+
+  # X-Frame-Options - Prevent clickjacking
+  X-Frame-Options: DENY
+
+  # X-Content-Type-Options - Prevent MIME sniffing
+  X-Content-Type-Options: nosniff
+
+  # X-XSS-Protection - Enable XSS filter
+  X-XSS-Protection: 1; mode=block
+
+  # Referrer-Policy - Control referrer information
+  Referrer-Policy: strict-origin-when-cross-origin
+
+  # Permissions-Policy - Control browser features
+  Permissions-Policy: geolocation=(), microphone=(), camera=()
+
+  # Strict-Transport-Security - Force HTTPS
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+
+  # Content-Security-Policy - Prevent XSS and injection attacks
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://cdn.jsdelivr.net https://openrouter.ai; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://*.firebaseio.com https://*.googleapis.com https://openrouter.ai https://api.telegram.org https://api.elevenlabs.io wss://*.firebaseio.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'
+
+/sw.js
+  # Service Worker - allow evaluation for dynamic caching
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-eval'
+
+/manifest.json
+  Content-Type: application/manifest+json
+
+/*.js
+  Content-Type: application/javascript; charset=utf-8
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.css
+  Content-Type: text/css; charset=utf-8
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.svg
+  Content-Type: image/svg+xml
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.png
+  Content-Type: image/png
+  Cache-Control: public, max-age=31536000, immutable

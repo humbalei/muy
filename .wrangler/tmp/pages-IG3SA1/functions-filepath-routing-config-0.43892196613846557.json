@@ -1,0 +1,37 @@
+{
+  "routes": [
+    {
+      "routePath": "/spoof-photo",
+      "mountPath": "/",
+      "method": "OPTIONS",
+      "module": [
+        "spoof-photo.js:onRequestOptions"
+      ]
+    },
+    {
+      "routePath": "/spoof-photo",
+      "mountPath": "/",
+      "method": "POST",
+      "module": [
+        "spoof-photo.js:onRequestPost"
+      ]
+    },
+    {
+      "routePath": "/spoof-video",
+      "mountPath": "/",
+      "method": "OPTIONS",
+      "module": [
+        "spoof-video.js:onRequestOptions"
+      ]
+    },
+    {
+      "routePath": "/spoof-video",
+      "mountPath": "/",
+      "method": "POST",
+      "module": [
+        "spoof-video.js:onRequestPost"
+      ]
+    }
+  ],
+  "baseURL": "/"
+}

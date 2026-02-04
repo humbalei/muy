@@ -5,18 +5,47 @@ const DB = {
   init() {
     firebase.initializeApp(CONFIG.firebase);
     this.db = firebase.firestore();
+
+    // Check for persistent session (Remember Me)
     const saved = localStorage.getItem('teamUser');
-    if (saved) this.user = JSON.parse(saved);
+    const rememberMe = localStorage.getItem('teamRememberMe');
+
+    if (saved && rememberMe === 'true') {
+      // Restore persistent session
+      this.user = JSON.parse(saved);
+      console.log('🔐 Restored session for:', this.user.id);
+    } else if (saved && rememberMe === 'false') {
+      // Session exists but Remember Me was off - clear it
+      localStorage.removeItem('teamUser');
+      this.user = null;
+    } else if (saved) {
+      // Old sessions (before Remember Me feature) - keep them for backwards compatibility
+      this.user = JSON.parse(saved);
+    }
   },
 
-  async login(username, password) {
+  async login(username, password, rememberMe = true) {
     try {
       const doc = await this.db.collection('users').doc(username.toLowerCase()).get();
       if (!doc.exists) return { error: 'User not found' };
       const data = doc.data();
       if (data.password !== password) return { error: 'Wrong password' };
+
       this.user = { id: doc.id, ...data };
-      localStorage.setItem('teamUser', JSON.stringify(this.user));
+
+      // Save session based on Remember Me preference
+      if (rememberMe) {
+        localStorage.setItem('teamUser', JSON.stringify(this.user));
+        localStorage.setItem('teamRememberMe', 'true');
+        localStorage.setItem('teamLoginTime', new Date().toISOString());
+        console.log('🔐 Session saved with Remember Me');
+      } else {
+        // Temporary session - will be cleared on init if browser closes
+        sessionStorage.setItem('teamUser', JSON.stringify(this.user));
+        localStorage.setItem('teamRememberMe', 'false');
+        console.log('🔐 Temporary session (no Remember Me)');
+      }
+
       return { success: true, user: this.user };
     } catch (e) {
       return { error: e.message };
@@ -26,6 +55,10 @@ const DB = {
   logout() {
     this.user = null;
     localStorage.removeItem('teamUser');
+    localStorage.removeItem('teamRememberMe');
+    localStorage.removeItem('teamLoginTime');
+    sessionStorage.removeItem('teamUser');
+    console.log('🔐 Logged out - all sessions cleared');
   },
 
   getUser() { return this.user; },

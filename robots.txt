@@ -1,0 +1,3 @@
+# Disallow all robots from indexing (private app)
+User-agent: *
+Disallow: /
