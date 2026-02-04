@@ -2671,7 +2671,7 @@ async function modal(type, data) {
       body.innerHTML = `
         ${isEditOutseeker ? `<input type="hidden" id="osEditId" value="${data.id}">` : ''}
         <div class="form-group">
-          <label class="form-label">Active OF Accounts (Total):</label>
+          <label class="form-label">Accounts Running:</label>
           <input type="number" class="form-input" id="osAcc" value="${isEditOutseeker ? data.activeAccounts || 0 : 0}" min="0">
         </div>
         <div class="grid grid-2">
