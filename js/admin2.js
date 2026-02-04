@@ -1880,8 +1880,9 @@ async function delScript(id) {
 // MODELS
 // ============================================
 async function loadModels() {
-  const pot = await DB.getModels('potential');
-  const act = await DB.getModels('active');
+  const allModels = await DB.getAll('models', [{ field: 'userId', value: userId }]);
+  const pot = allModels.filter(m => m.status === 'potential');
+  const act = allModels.filter(m => m.status === 'active');
 
   document.getElementById('potList').innerHTML = renderModels(pot) || '<div class="empty-state">No potential models</div>';
   document.getElementById('actList').innerHTML = renderModels(act) || '<div class="empty-state">No active models</div>';
@@ -4311,6 +4312,7 @@ async function saveModel() {
   }
 
   const data = {
+    userId: userId,
     name: name,
     photo: document.getElementById('modPhoto')?.value?.trim() || '',
     country: document.getElementById('modCountry')?.value?.trim() || '',
