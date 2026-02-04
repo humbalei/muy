@@ -53,22 +53,24 @@
 
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-  <script src="js/config.js?v=1005"></script>
-  <script src="js/db.js?v=1005"></script>
+  <script src="js/config.js?v=1007"></script>
+  <script src="js/db.js?v=1007"></script>
 
-  <!-- PWA Service Worker Registration -->
+  <!-- PWA Service Worker Registration - DISABLED for stability -->
   <script>
+    // UNREGISTER any existing service workers to prevent offline errors
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-          .then(reg => console.log('✅ Service Worker registered:', reg.scope))
-          .catch(err => console.log('❌ Service Worker registration failed:', err));
+      navigator.serviceWorker.getRegistrations().then(registrations => {
+        registrations.forEach(registration => {
+          registration.unregister();
+          console.log('🗑️ Unregistered service worker');
+        });
       });
     }
   </script>
 
   <script>
-    console.log('🚀 INDEX.HTML LOADED - v1003');
+    console.log('🚀 INDEX.HTML LOADED - v1007');
 
     DB.init();
     console.log('✅ DB.init() completed');

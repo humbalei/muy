@@ -3,9 +3,17 @@ const DB = {
   user: null,
 
   init() {
-    console.log('🔧 DB.init() START - v1003');
+    console.log('🔧 DB.init() START - v1007');
     firebase.initializeApp(CONFIG.firebase);
     this.db = firebase.firestore();
+
+    // CRITICAL: Enable network for Firestore (prevent offline errors)
+    this.db.enableNetwork().then(() => {
+      console.log('✅ Firebase network enabled');
+    }).catch(err => {
+      console.log('⚠️ Firebase network enable failed:', err);
+    });
+
     console.log('✅ Firebase initialized');
 
     // Check for persistent session (Remember Me)
