@@ -1450,7 +1450,14 @@ async function loadOutseeker() {
 async function loadOpeners() {
   const filter = document.getElementById('openerFilter')?.value || '';
   let scripts = await DB.getScripts('opener');
-  if (filter) scripts = scripts.filter(s => s.platform === filter);
+
+  // Filter by platform - check if filter is in platforms array or old platform field
+  if (filter) {
+    scripts = scripts.filter(s => {
+      const platforms = s.platforms || (s.platform ? [s.platform] : []);
+      return platforms.includes(filter);
+    });
+  }
 
   // Separate active and inactive
   const active = scripts.filter(s => s.active);
@@ -1476,18 +1483,28 @@ async function loadOpeners() {
 }
 
 async function renderOpenerCard(s) {
-  let accountName = '';
-  if (s.accountId) {
-    const acc = await DB.get('accounts', s.accountId);
-    if (acc) accountName = `@${acc.username}`;
+  // Convert old format to new
+  const platforms = s.platforms || (s.platform ? [s.platform] : []);
+  const accountIds = s.accountIds || (s.accountId ? [s.accountId] : []);
+
+  // Load account names
+  const accountNames = [];
+  for (const accId of accountIds) {
+    const acc = await DB.get('accounts', accId);
+    if (acc) accountNames.push(`@${acc.username}`);
   }
+
+  // Platform badges
+  const platformBadges = platforms.map(p =>
+    `<span class="status status-${p === 'instagram' ? 'healthy' : p === 'twitter' ? 'pending' : 'live'}">${p}</span>`
+  ).join(' ');
 
   return `<div class="script-box ${s.active ? 'selected' : ''}" onclick="copyToClipboard('${encodeURIComponent(s.text)}')">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <div>
-        <span class="status status-${s.platform === 'instagram' ? 'healthy' : s.platform === 'twitter' ? 'pending' : 'live'}">${s.platform}</span>
+        ${platformBadges || '<span style="color:#666">All Platforms</span>'}
         ${s.active ? '<span style="color:#0f0;margin-left:8px;font-size:11px">● ACTIVE</span>' : ''}
-        ${accountName ? `<span style="color:#999;margin-left:8px;font-size:11px">→ ${accountName}</span>` : ''}
+        ${accountNames.length > 0 ? `<span style="color:#999;margin-left:8px;font-size:11px">→ ${accountNames.join(', ')}</span>` : ''}
       </div>
       <div style="display:flex;gap:5px">
         <button class="btn btn-sm" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();toggleScriptActive('${s.id}','opener')">${s.active ? 'Deactivate' : 'Activate'}</button>
@@ -1504,7 +1521,14 @@ async function renderOpenerCard(s) {
 async function loadFollowups() {
   const filter = document.getElementById('followupFilter')?.value || '';
   let scripts = await DB.getScripts('followup');
-  if (filter) scripts = scripts.filter(s => s.platform === filter);
+
+  // Filter by platform - check if filter is in platforms array or old platform field
+  if (filter) {
+    scripts = scripts.filter(s => {
+      const platforms = s.platforms || (s.platform ? [s.platform] : []);
+      return platforms.includes(filter);
+    });
+  }
 
   // Separate active and inactive
   const active = scripts.filter(s => s.active);
@@ -1530,18 +1554,28 @@ async function loadFollowups() {
 }
 
 async function renderFollowupCard(s) {
-  let accountName = '';
-  if (s.accountId) {
-    const acc = await DB.get('accounts', s.accountId);
-    if (acc) accountName = `@${acc.username}`;
+  // Convert old format to new
+  const platforms = s.platforms || (s.platform ? [s.platform] : []);
+  const accountIds = s.accountIds || (s.accountId ? [s.accountId] : []);
+
+  // Load account names
+  const accountNames = [];
+  for (const accId of accountIds) {
+    const acc = await DB.get('accounts', accId);
+    if (acc) accountNames.push(`@${acc.username}`);
   }
+
+  // Platform badges
+  const platformBadges = platforms.map(p =>
+    `<span class="status status-${p === 'instagram' ? 'healthy' : p === 'twitter' ? 'pending' : 'live'}">${p}</span>`
+  ).join(' ');
 
   return `<div class="script-box ${s.active ? 'selected' : ''}" onclick="copyToClipboard('${encodeURIComponent(s.text)}')">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <div>
-        <span class="status status-${s.platform === 'instagram' ? 'healthy' : s.platform === 'twitter' ? 'pending' : 'live'}">${s.platform}</span>
+        ${platformBadges || '<span style="color:#666">All Platforms</span>'}
         ${s.active ? '<span style="color:#0f0;margin-left:8px;font-size:11px">● ACTIVE</span>' : ''}
-        ${accountName ? `<span style="color:#999;margin-left:8px;font-size:11px">→ ${accountName}</span>` : ''}
+        ${accountNames.length > 0 ? `<span style="color:#999;margin-left:8px;font-size:11px">→ ${accountNames.join(', ')}</span>` : ''}
       </div>
       <div style="display:flex;gap:5px">
         <button class="btn btn-sm" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();toggleScriptActive('${s.id}','followup')">${s.active ? 'Deactivate' : 'Activate'}</button>
@@ -1560,18 +1594,28 @@ async function loadScripts() {
 
   let html = '';
   for (const s of scripts) {
-    let accountName = '';
-    if (s.accountId) {
-      const acc = await DB.get('accounts', s.accountId);
-      if (acc) accountName = `@${acc.username}`;
+    // Convert old format to new
+    const platforms = s.platforms || (s.platform ? [s.platform] : []);
+    const accountIds = s.accountIds || (s.accountId ? [s.accountId] : []);
+
+    // Load account names
+    const accountNames = [];
+    for (const accId of accountIds) {
+      const acc = await DB.get('accounts', accId);
+      if (acc) accountNames.push(`@${acc.username}`);
     }
+
+    // Platform badges
+    const platformBadges = platforms.map(p =>
+      `<span class="status status-${p === 'instagram' ? 'healthy' : p === 'twitter' ? 'pending' : 'live'}" style="font-size:10px">${p}</span>`
+    ).join(' ');
 
     html += `<div class="script-box" onclick="copyToClipboard('${encodeURIComponent(s.text)}')">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <div>
           <strong>${s.title || 'Script'}</strong>
-          ${s.platform ? `<span class="status status-${s.platform === 'instagram' ? 'healthy' : s.platform === 'twitter' ? 'pending' : 'live'}" style="margin-left:8px;font-size:10px">${s.platform}</span>` : ''}
-          ${accountName ? `<span style="color:#999;margin-left:8px;font-size:11px">→ ${accountName}</span>` : ''}
+          ${platformBadges ? `<span style="margin-left:8px">${platformBadges}</span>` : ''}
+          ${accountNames.length > 0 ? `<span style="color:#999;margin-left:8px;font-size:11px">→ ${accountNames.join(', ')}</span>` : ''}
         </div>
         <div style="display:flex;gap:5px">
           <button class="btn btn-sm" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();editScript('${s.id}','script')">Edit</button>
@@ -2520,20 +2564,36 @@ async function modal(type, data) {
 
       body.innerHTML = `
         ${data !== 'script' ? `
-        <div class="grid grid-2">
-          <div class="form-group">
-            <label class="form-label">Platform:</label>
-            <select class="form-select" id="scriptPlat">
-              <option value="instagram">Instagram</option>
-              <option value="twitter">Twitter</option>
-              <option value="webcam">Webcam</option>
-            </select>
+        <div class="form-group">
+          <label class="form-label">Platforms (select multiple):</label>
+          <div style="display:flex;gap:15px;padding:10px;background:#0a0a0a;border:1px solid #333;border-radius:3px">
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+              <input type="checkbox" class="scriptPlatCheck" value="instagram" style="width:18px;height:18px">
+              <span>Instagram</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+              <input type="checkbox" class="scriptPlatCheck" value="twitter" style="width:18px;height:18px">
+              <span>Twitter</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+              <input type="checkbox" class="scriptPlatCheck" value="webcam" style="width:18px;height:18px">
+              <span>Webcam</span>
+            </label>
           </div>
-          <div class="form-group">
-            <label class="form-label">Assign to Account:</label>
-            <select class="form-select" id="scriptAccount">
-              ${accountOptions}
-            </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Assign to Accounts (select multiple):</label>
+          <div id="scriptAccountsContainer" style="max-height:150px;overflow-y:auto;padding:10px;background:#0a0a0a;border:1px solid #333;border-radius:3px">
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;margin-bottom:8px">
+              <input type="checkbox" class="scriptAccCheck" value="" style="width:18px;height:18px">
+              <span style="color:#999">None (General)</span>
+            </label>
+            ${accs.map(a => `
+              <label style="display:flex;align-items:center;gap:5px;cursor:pointer;margin-bottom:8px">
+                <input type="checkbox" class="scriptAccCheck" value="${a.id}" style="width:18px;height:18px">
+                <span>@${a.username} (${a.type})</span>
+              </label>
+            `).join('')}
           </div>
         </div>
         <div class="form-group">
@@ -2556,21 +2616,36 @@ async function modal(type, data) {
             <option value="other">Other</option>
           </select>
         </div>
-        <div class="grid grid-2">
-          <div class="form-group">
-            <label class="form-label">Platform:</label>
-            <select class="form-select" id="scriptPlat">
-              <option value="">All Platforms</option>
-              <option value="instagram">Instagram</option>
-              <option value="twitter">Twitter</option>
-              <option value="webcam">Webcam</option>
-            </select>
+        <div class="form-group">
+          <label class="form-label">Platforms (select multiple):</label>
+          <div style="display:flex;gap:15px;padding:10px;background:#0a0a0a;border:1px solid #333;border-radius:3px">
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+              <input type="checkbox" class="scriptPlatCheck" value="instagram" style="width:18px;height:18px">
+              <span>Instagram</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+              <input type="checkbox" class="scriptPlatCheck" value="twitter" style="width:18px;height:18px">
+              <span>Twitter</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+              <input type="checkbox" class="scriptPlatCheck" value="webcam" style="width:18px;height:18px">
+              <span>Webcam</span>
+            </label>
           </div>
-          <div class="form-group">
-            <label class="form-label">Assign to Account:</label>
-            <select class="form-select" id="scriptAccount">
-              ${accountOptions}
-            </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Assign to Accounts (select multiple):</label>
+          <div id="scriptAccountsContainer" style="max-height:150px;overflow-y:auto;padding:10px;background:#0a0a0a;border:1px solid #333;border-radius:3px">
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;margin-bottom:8px">
+              <input type="checkbox" class="scriptAccCheck" value="" style="width:18px;height:18px">
+              <span style="color:#999">None (General)</span>
+            </label>
+            ${accs.map(a => `
+              <label style="display:flex;align-items:center;gap:5px;cursor:pointer;margin-bottom:8px">
+                <input type="checkbox" class="scriptAccCheck" value="${a.id}" style="width:18px;height:18px">
+                <span>@${a.username} (${a.type})</span>
+              </label>
+            `).join('')}
           </div>
         </div>`}
         <div class="form-group">
@@ -2590,29 +2665,44 @@ async function modal(type, data) {
       title.textContent = `Edit ${scriptType.charAt(0).toUpperCase() + scriptType.slice(1)}`;
       // Load accounts for assignment
       const accsEdit = await DB.getAll('accounts', [{ field: 'userId', value: userId }]);
-      let accountOptionsEdit = '<option value="">None (General)</option>';
-      accsEdit.forEach(a => {
-        const selected = a.id === data.accountId ? 'selected' : '';
-        accountOptionsEdit += `<option value="${a.id}" ${selected}>@${a.username} (${a.type})</option>`;
-      });
+
+      // Convert old single platform/accountId to arrays if needed
+      const platforms = data.platforms || (data.platform ? [data.platform] : []);
+      const accountIds = data.accountIds || (data.accountId ? [data.accountId] : []);
 
       body.innerHTML = `
         <input type="hidden" id="scriptEditId" value="${data.id}">
         ${scriptType !== 'script' ? `
-        <div class="grid grid-2">
-          <div class="form-group">
-            <label class="form-label">Platform:</label>
-            <select class="form-select" id="scriptPlat">
-              <option value="instagram" ${data.platform === 'instagram' ? 'selected' : ''}>Instagram</option>
-              <option value="twitter" ${data.platform === 'twitter' ? 'selected' : ''}>Twitter</option>
-              <option value="webcam" ${data.platform === 'webcam' ? 'selected' : ''}>Webcam</option>
-            </select>
+        <div class="form-group">
+          <label class="form-label">Platforms (select multiple):</label>
+          <div style="display:flex;gap:15px;padding:10px;background:#0a0a0a;border:1px solid #333;border-radius:3px">
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+              <input type="checkbox" class="scriptPlatCheck" value="instagram" ${platforms.includes('instagram') ? 'checked' : ''} style="width:18px;height:18px">
+              <span>Instagram</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+              <input type="checkbox" class="scriptPlatCheck" value="twitter" ${platforms.includes('twitter') ? 'checked' : ''} style="width:18px;height:18px">
+              <span>Twitter</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+              <input type="checkbox" class="scriptPlatCheck" value="webcam" ${platforms.includes('webcam') ? 'checked' : ''} style="width:18px;height:18px">
+              <span>Webcam</span>
+            </label>
           </div>
-          <div class="form-group">
-            <label class="form-label">Assign to Account:</label>
-            <select class="form-select" id="scriptAccount">
-              ${accountOptionsEdit}
-            </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Assign to Accounts (select multiple):</label>
+          <div style="max-height:150px;overflow-y:auto;padding:10px;background:#0a0a0a;border:1px solid #333;border-radius:3px">
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;margin-bottom:8px">
+              <input type="checkbox" class="scriptAccCheck" value="" ${accountIds.includes('') || accountIds.length === 0 ? 'checked' : ''} style="width:18px;height:18px">
+              <span style="color:#999">None (General)</span>
+            </label>
+            ${accsEdit.map(a => `
+              <label style="display:flex;align-items:center;gap:5px;cursor:pointer;margin-bottom:8px">
+                <input type="checkbox" class="scriptAccCheck" value="${a.id}" ${accountIds.includes(a.id) ? 'checked' : ''} style="width:18px;height:18px">
+                <span>@${a.username} (${a.type})</span>
+              </label>
+            `).join('')}
           </div>
         </div>
         <div class="form-group">
@@ -2635,21 +2725,36 @@ async function modal(type, data) {
             <option value="other" ${data.category === 'other' ? 'selected' : ''}>Other</option>
           </select>
         </div>
-        <div class="grid grid-2">
-          <div class="form-group">
-            <label class="form-label">Platform:</label>
-            <select class="form-select" id="scriptPlat">
-              <option value="" ${!data.platform ? 'selected' : ''}>All Platforms</option>
-              <option value="instagram" ${data.platform === 'instagram' ? 'selected' : ''}>Instagram</option>
-              <option value="twitter" ${data.platform === 'twitter' ? 'selected' : ''}>Twitter</option>
-              <option value="webcam" ${data.platform === 'webcam' ? 'selected' : ''}>Webcam</option>
-            </select>
+        <div class="form-group">
+          <label class="form-label">Platforms (select multiple):</label>
+          <div style="display:flex;gap:15px;padding:10px;background:#0a0a0a;border:1px solid #333;border-radius:3px">
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+              <input type="checkbox" class="scriptPlatCheck" value="instagram" ${platforms.includes('instagram') ? 'checked' : ''} style="width:18px;height:18px">
+              <span>Instagram</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+              <input type="checkbox" class="scriptPlatCheck" value="twitter" ${platforms.includes('twitter') ? 'checked' : ''} style="width:18px;height:18px">
+              <span>Twitter</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+              <input type="checkbox" class="scriptPlatCheck" value="webcam" ${platforms.includes('webcam') ? 'checked' : ''} style="width:18px;height:18px">
+              <span>Webcam</span>
+            </label>
           </div>
-          <div class="form-group">
-            <label class="form-label">Assign to Account:</label>
-            <select class="form-select" id="scriptAccount">
-              ${accountOptionsEdit}
-            </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Assign to Accounts (select multiple):</label>
+          <div style="max-height:150px;overflow-y:auto;padding:10px;background:#0a0a0a;border:1px solid #333;border-radius:3px">
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;margin-bottom:8px">
+              <input type="checkbox" class="scriptAccCheck" value="" ${accountIds.includes('') || accountIds.length === 0 ? 'checked' : ''} style="width:18px;height:18px">
+              <span style="color:#999">None (General)</span>
+            </label>
+            ${accsEdit.map(a => `
+              <label style="display:flex;align-items:center;gap:5px;cursor:pointer;margin-bottom:8px">
+                <input type="checkbox" class="scriptAccCheck" value="${a.id}" ${accountIds.includes(a.id) ? 'checked' : ''} style="width:18px;height:18px">
+                <span>@${a.username} (${a.type})</span>
+              </label>
+            `).join('')}
           </div>
         </div>`}
         <div class="form-group">
@@ -3835,23 +3940,27 @@ async function saveScript(type) {
     return;
   }
 
+  // Collect selected platforms
+  const platforms = Array.from(document.querySelectorAll('.scriptPlatCheck:checked')).map(cb => cb.value);
+
+  // Collect selected accounts
+  const accountIds = Array.from(document.querySelectorAll('.scriptAccCheck:checked')).map(cb => cb.value).filter(v => v !== '');
+
   const data = {
     type,
     text: text,
     notes: document.getElementById('scriptNotes')?.value?.trim() || '',
-    usageCount: 0
+    usageCount: 0,
+    platforms: platforms,
+    accountIds: accountIds
   };
 
   if (type === 'script') {
     data.title = document.getElementById('scriptTitle')?.value?.trim() || '';
     data.category = document.getElementById('scriptCategory')?.value || 'other';
-    data.platform = document.getElementById('scriptPlat')?.value || '';
-    data.accountId = document.getElementById('scriptAccount')?.value || null;
   } else {
     // Opener or followup
-    data.platform = document.getElementById('scriptPlat')?.value || '';
     data.active = document.getElementById('scriptActive')?.checked || false;
-    data.accountId = document.getElementById('scriptAccount')?.value || null;
   }
 
   await DB.add('scripts', data);
@@ -3873,21 +3982,25 @@ async function updateScript(type) {
     return;
   }
 
+  // Collect selected platforms
+  const platforms = Array.from(document.querySelectorAll('.scriptPlatCheck:checked')).map(cb => cb.value);
+
+  // Collect selected accounts
+  const accountIds = Array.from(document.querySelectorAll('.scriptAccCheck:checked')).map(cb => cb.value).filter(v => v !== '');
+
   const data = {
     text: text,
-    notes: document.getElementById('scriptNotes')?.value?.trim() || ''
+    notes: document.getElementById('scriptNotes')?.value?.trim() || '',
+    platforms: platforms,
+    accountIds: accountIds
   };
 
   if (type === 'script') {
     data.title = document.getElementById('scriptTitle')?.value?.trim() || '';
     data.category = document.getElementById('scriptCategory')?.value || 'other';
-    data.platform = document.getElementById('scriptPlat')?.value || '';
-    data.accountId = document.getElementById('scriptAccount')?.value || null;
   } else {
     // Opener or followup
-    data.platform = document.getElementById('scriptPlat')?.value || '';
     data.active = document.getElementById('scriptActive')?.checked || false;
-    data.accountId = document.getElementById('scriptAccount')?.value || null;
   }
 
   await DB.update('scripts', id, data);
