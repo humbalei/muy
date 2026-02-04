@@ -23,7 +23,7 @@
   <!-- Manifest -->
   <link rel="manifest" href="manifest.json">
 
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css?v=1003">
 </head>
 <body class="login-page">
   <div class="login-box">
@@ -53,8 +53,8 @@
 
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-  <script src="js/config.js"></script>
-  <script src="js/db.js"></script>
+  <script src="js/config.js?v=1003"></script>
+  <script src="js/db.js?v=1003"></script>
 
   <!-- PWA Service Worker Registration -->
   <script>
@@ -68,29 +68,49 @@
   </script>
 
   <script>
+    console.log('🚀 INDEX.HTML LOADED - v1003');
+
     DB.init();
+    console.log('✅ DB.init() completed');
+    console.log('📋 DB.isLoggedIn():', DB.isLoggedIn());
+
     if (DB.isLoggedIn()) {
-      location.href = DB.getUser().role === 'admin' ? 'admin.html' : 'assistant.html';
+      console.log('✅ User already logged in, redirecting...');
+      const user = DB.getUser();
+      console.log('👤 User:', user);
+      location.href = user.role === 'admin' ? 'admin.html' : 'assistant.html';
     }
 
     document.getElementById('loginForm').onsubmit = async (e) => {
       e.preventDefault();
+      console.log('🔐 LOGIN FORM SUBMITTED');
+
       const btn = document.getElementById('loginBtn');
       const err = document.getElementById('error');
       err.style.display = 'none';
       btn.disabled = true;
       btn.textContent = 'Loading...';
 
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
       const rememberMe = document.getElementById('rememberMe').checked;
-      const r = await DB.login(
-        document.getElementById('username').value.trim(),
-        document.getElementById('password').value,
-        rememberMe
-      );
+
+      console.log('👤 Username:', username);
+      console.log('🔒 Password length:', password.length);
+      console.log('💾 Remember Me:', rememberMe);
+
+      const r = await DB.login(username, password, rememberMe);
+
+      console.log('📥 Login result:', r);
 
       if (r.success) {
-        location.href = r.user.role === 'admin' ? 'admin.html' : 'assistant.html';
+        console.log('✅ LOGIN SUCCESS!');
+        console.log('👤 User role:', r.user.role);
+        const targetPage = r.user.role === 'admin' ? 'admin.html' : 'assistant.html';
+        console.log('🔄 Redirecting to:', targetPage);
+        location.href = targetPage;
       } else {
+        console.error('❌ LOGIN FAILED:', r.error);
         err.textContent = r.error;
         err.style.display = 'block';
         btn.disabled = false;

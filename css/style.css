@@ -249,7 +249,7 @@ a:hover {
   width: 100%;
   padding: 8px;
   font-family: Arial, sans-serif;
-  font-size: 16px; /* Changed from 12px to 16px - prevents iOS auto-zoom on focus */
+  font-size: 16px !important; /* Changed from 12px - prevents iOS auto-zoom on focus */
   background: #0a0a0a;
   border: 1px solid #1a1a1a;
   color: #0f0;

@@ -3,13 +3,19 @@ const DB = {
   user: null,
 
   init() {
+    console.log('🔧 DB.init() START - v1003');
     firebase.initializeApp(CONFIG.firebase);
     this.db = firebase.firestore();
+    console.log('✅ Firebase initialized');
 
     // Check for persistent session (Remember Me)
     const savedLocal = localStorage.getItem('teamUser');
     const savedSession = sessionStorage.getItem('teamUser');
     const rememberMe = localStorage.getItem('teamRememberMe');
+
+    console.log('💾 savedLocal:', savedLocal ? 'EXISTS' : 'NULL');
+    console.log('💾 savedSession:', savedSession ? 'EXISTS' : 'NULL');
+    console.log('💾 rememberMe:', rememberMe);
 
     if (savedLocal && rememberMe === 'true') {
       // Restore persistent session (Remember Me was ON)
@@ -21,39 +27,65 @@ const DB = {
       console.log('🔐 Restored temporary session for:', this.user.id);
     } else if (savedLocal && rememberMe === 'false') {
       // Old data in localStorage but Remember Me is OFF - clear it
+      console.log('🧹 Clearing old localStorage (Remember Me is OFF)');
       localStorage.removeItem('teamUser');
       this.user = null;
     } else if (savedLocal) {
       // Old sessions (before Remember Me feature) - keep them for backwards compatibility
       this.user = JSON.parse(savedLocal);
       console.log('🔐 Restored legacy session for:', this.user.id);
+    } else {
+      console.log('❌ No saved session found');
+      this.user = null;
     }
+
+    console.log('🔧 DB.init() END - user:', this.user ? this.user.id : 'NULL');
   },
 
   async login(username, password, rememberMe = true) {
-    try {
-      const doc = await this.db.collection('users').doc(username.toLowerCase()).get();
-      if (!doc.exists) return { error: 'User not found' };
-      const data = doc.data();
-      if (data.password !== password) return { error: 'Wrong password' };
+    console.log('🔐 DB.login() START');
+    console.log('👤 Username:', username);
+    console.log('💾 Remember Me:', rememberMe);
 
+    try {
+      console.log('📡 Fetching user from Firestore...');
+      const doc = await this.db.collection('users').doc(username.toLowerCase()).get();
+
+      console.log('📋 Document exists:', doc.exists);
+      if (!doc.exists) {
+        console.error('❌ User not found in Firestore');
+        return { error: 'User not found' };
+      }
+
+      const data = doc.data();
+      console.log('📄 User data retrieved:', { id: doc.id, role: data.role });
+
+      if (data.password !== password) {
+        console.error('❌ Wrong password');
+        return { error: 'Wrong password' };
+      }
+
+      console.log('✅ Password correct!');
       this.user = { id: doc.id, ...data };
 
       // Save session based on Remember Me preference
       if (rememberMe) {
+        console.log('💾 Saving to localStorage (Remember Me ON)');
         localStorage.setItem('teamUser', JSON.stringify(this.user));
         localStorage.setItem('teamRememberMe', 'true');
         localStorage.setItem('teamLoginTime', new Date().toISOString());
-        console.log('🔐 Session saved with Remember Me');
+        console.log('✅ Session saved with Remember Me');
       } else {
-        // Temporary session - will be cleared on init if browser closes
+        console.log('💾 Saving to sessionStorage (Remember Me OFF)');
         sessionStorage.setItem('teamUser', JSON.stringify(this.user));
         localStorage.setItem('teamRememberMe', 'false');
-        console.log('🔐 Temporary session (no Remember Me)');
+        console.log('✅ Temporary session saved');
       }
 
+      console.log('🔐 DB.login() SUCCESS');
       return { success: true, user: this.user };
     } catch (e) {
+      console.error('❌ DB.login() ERROR:', e);
       return { error: e.message };
     }
   },
