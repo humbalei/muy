@@ -3372,6 +3372,15 @@ async function modal(type, data) {
       document.getElementById('mBox').className = 'modal-box large';
       body.innerHTML = `
         ${isEditModel ? `<input type="hidden" id="modEditId" value="${data.id}">` : ''}
+
+        <div style="margin-bottom:20px;padding:15px;background:#0a0a0a;border:1px solid #333;border-radius:4px">
+          <label class="form-label">Model Status:</label>
+          <select class="form-select" id="modStatus" onchange="toggleActiveFields()">
+            <option value="potential" ${!isEditModel || data.status === 'potential' ? 'selected' : ''}>Potential (Not working yet)</option>
+            <option value="active" ${isEditModel && data.status === 'active' ? 'selected' : ''}>Active (Currently working)</option>
+          </select>
+        </div>
+
         <div style="margin-bottom:20px;padding-bottom:20px;border-bottom:2px solid #333">
           <h3 style="color:#0f0;margin-bottom:15px">Basic Info</h3>
           <div class="grid grid-2">
@@ -3425,7 +3434,11 @@ async function modal(type, data) {
         </div>
 
         <div style="margin-bottom:20px;padding-bottom:20px;border-bottom:2px solid #333">
-          <h3 style="color:#0f0;margin-bottom:15px">Background & Motivation</h3>
+          <h3 style="color:#0f0;margin-bottom:15px">Experience & Skills</h3>
+          <div class="form-group">
+            <label class="form-label">Experience Description (Detailně popiš její zkušenosti):</label>
+            <textarea class="form-textarea" id="modExpDesc" style="min-height:100px" placeholder="Jaké má zkušenosti s adult contentem, webcams, OnlyFans... Co už dělala, jak dlouho...">${isEditModel ? data.experienceDescription || '' : ''}</textarea>
+          </div>
           <div class="grid grid-2">
             <div class="form-group">
               <label class="form-label">Adult Industry Experience:</label>
@@ -3443,6 +3456,66 @@ async function modal(type, data) {
                 <option value="flexible" ${isEditModel && data.paymentPreference === 'flexible' ? 'selected' : ''}>Flexible</option>
               </select>
             </div>
+          </div>
+          <div class="grid grid-2">
+            <div class="form-group">
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                <input type="checkbox" id="modCanEnglish" style="width:20px;height:20px" ${isEditModel && data.canSpeakEnglish ? 'checked' : ''} onchange="document.getElementById('modEnglishLevelWrap').style.display = this.checked ? 'block' : 'none'">
+                <span>Speaks English</span>
+              </label>
+            </div>
+            <div class="form-group" id="modEnglishLevelWrap" style="display:${isEditModel && data.canSpeakEnglish ? 'block' : 'none'}">
+              <label class="form-label">English Level (1-10):</label>
+              <input type="number" class="form-input" id="modEnglishLevel" min="1" max="10" value="${isEditModel ? data.englishLevel || 5 : 5}">
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-bottom:20px;padding-bottom:20px;border-bottom:2px solid #333">
+          <h3 style="color:#0f0;margin-bottom:15px">Work Type & Setup</h3>
+          <div class="grid grid-2">
+            <div class="form-group">
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                <input type="checkbox" id="modCanWebcam" style="width:20px;height:20px" ${isEditModel && data.canDoWebcams ? 'checked' : ''}>
+                <span>Can Do Webcams</span>
+              </label>
+            </div>
+            <div class="form-group">
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                <input type="checkbox" id="modCanContent" style="width:20px;height:20px" ${isEditModel && data.canDoContent ? 'checked' : ''}>
+                <span>Can Do Content & OnlyFans</span>
+              </label>
+            </div>
+          </div>
+          <div class="grid grid-2">
+            <div class="form-group">
+              <label class="form-label">Phone (Model telefonu):</label>
+              <input type="text" class="form-input" id="modPhone" placeholder="iPhone 13, Samsung S21..." value="${isEditModel ? data.phone || '' : ''}">
+            </div>
+            <div class="form-group">
+              <label class="form-label">PC/Laptop:</label>
+              <input type="text" class="form-input" id="modPC" placeholder="MacBook Pro, Gaming PC..." value="${isEditModel ? data.pc || '' : ''}">
+            </div>
+          </div>
+          <div class="grid grid-2">
+            <div class="form-group">
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                <input type="checkbox" id="modHasWebcam" style="width:20px;height:20px" ${isEditModel && data.hasWebcam ? 'checked' : ''}>
+                <span>Has Webcam</span>
+              </label>
+            </div>
+            <div class="form-group">
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                <input type="checkbox" id="modHasLovense" style="width:20px;height:20px" ${isEditModel && data.hasLovense ? 'checked' : ''}>
+                <span>Has Lovense Lush</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-bottom:20px;padding-bottom:20px;border-bottom:2px solid #333">
+          <h3 style="color:#0f0;margin-bottom:15px">Background & Motivation</h3>
+          <div class="grid grid-2">
             <div class="form-group">
               <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
                 <input type="checkbox" id="modHasJob" style="width:20px;height:20px" ${isEditModel && data.hasJob ? 'checked' : ''}>
@@ -3470,24 +3543,54 @@ async function modal(type, data) {
           </div>
         </div>
 
-        ${isEditModel && data.status === 'active' ? `
-        <div style="margin-bottom:20px">
+        <div id="activeModelFields" style="margin-bottom:20px;padding-bottom:20px;border-bottom:2px solid #333;display:${!isEditModel || data.status === 'potential' ? 'none' : 'block'}">
+          <h3 style="color:#ff0;margin-bottom:15px">🟢 Active Model - System Access</h3>
+          <div class="form-group">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+              <input type="checkbox" id="modHasSystemAccess" style="width:20px;height:20px" ${isEditModel && data.hasSystemAccess ? 'checked' : ''} onchange="document.getElementById('modSystemLoginWrap').style.display = this.checked ? 'block' : 'none'">
+              <span>Has Access to Models System</span>
+            </label>
+          </div>
+          <div id="modSystemLoginWrap" style="display:${isEditModel && data.hasSystemAccess ? 'block' : 'none'}">
+            <div class="grid grid-2">
+              <div class="form-group">
+                <label class="form-label">Login Username:</label>
+                <input type="text" class="form-input" id="modSystemUser" value="${isEditModel ? data.systemUsername || '' : ''}">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Login Password:</label>
+                <input type="text" class="form-input" id="modSystemPass" value="${isEditModel ? data.systemPassword || '' : ''}">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="activeModelPerf" style="margin-bottom:20px;display:${!isEditModel || data.status === 'potential' ? 'none' : 'block'}">
           <h3 style="color:#0f0;margin-bottom:15px">Active Model - Performance</h3>
           <div class="form-group">
             <label class="form-label">Content Performance (How is she doing with content creation?):</label>
-            <textarea class="form-textarea" id="modContentPerf" style="min-height:80px">${data.contentPerformance || ''}</textarea>
+            <textarea class="form-textarea" id="modContentPerf" style="min-height:80px">${isEditModel ? data.contentPerformance || '' : ''}</textarea>
           </div>
           <div class="form-group">
             <label class="form-label">Overall Status & Report:</label>
-            <textarea class="form-textarea" id="modOverallStatus" style="min-height:80px">${data.overallStatus || ''}</textarea>
+            <textarea class="form-textarea" id="modOverallStatus" style="min-height:80px">${isEditModel ? data.overallStatus || '' : ''}</textarea>
           </div>
           <div class="form-group">
             <label class="form-label">Checklist Progress Notes:</label>
-            <textarea class="form-textarea" id="modChecklistProgress" style="min-height:60px">${data.checklistProgress || ''}</textarea>
+            <textarea class="form-textarea" id="modChecklistProgress" style="min-height:60px">${isEditModel ? data.checklistProgress || '' : ''}</textarea>
           </div>
-        </div>` : ''}
+        </div>
 
         <button class="btn btn-primary" onclick="saveModel()">${isEditModel ? 'Update' : 'Save'} Model</button>
+
+        <script>
+          function toggleActiveFields() {
+            const status = document.getElementById('modStatus').value;
+            const isActive = status === 'active';
+            document.getElementById('activeModelFields').style.display = isActive ? 'block' : 'none';
+            document.getElementById('activeModelPerf').style.display = isActive ? 'block' : 'none';
+          }
+        </script>
       `;
       break;
 
@@ -4446,10 +4549,25 @@ async function updateScript(type) {
 async function saveModel() {
   const editId = document.getElementById('modEditId')?.value;
   const name = document.getElementById('modName')?.value?.trim();
+  const status = document.getElementById('modStatus')?.value || 'potential';
 
   if (!name) {
     toast('Name is required', 'error');
     return;
+  }
+
+  // Get existing model data if editing (to preserve communication history)
+  let existingData = {};
+  if (editId) {
+    const existing = await DB.get('models', editId);
+    if (existing) {
+      existingData = {
+        communicationNotes: existing.communicationNotes || [],
+        lastCommunication: existing.lastCommunication || null,
+        communicationStreak: existing.communicationStreak || 0,
+        addedDate: existing.addedDate || new Date().toISOString()
+      };
+    }
   }
 
   const data = {
@@ -4458,6 +4576,7 @@ async function saveModel() {
     photo: document.getElementById('modPhoto')?.value?.trim() || '',
     country: document.getElementById('modCountry')?.value?.trim() || '',
     age: parseInt(document.getElementById('modAge')?.value) || null,
+    status: status,
 
     // Contact status
     onAssistantTelegram: document.getElementById('modOnAssistTg')?.checked || false,
@@ -4465,26 +4584,54 @@ async function saveModel() {
     onBossTelegram: document.getElementById('modOnBossTg')?.checked || false,
     onBossWhatsApp: document.getElementById('modOnBossWa')?.checked || false,
 
-    // Background
+    // Experience & Skills
+    experienceDescription: document.getElementById('modExpDesc')?.value?.trim() || '',
     adultExperience: document.getElementById('modExperience')?.value || 'none',
     paymentPreference: document.getElementById('modPayment')?.value || 'flexible',
+    canSpeakEnglish: document.getElementById('modCanEnglish')?.checked || false,
+    englishLevel: parseInt(document.getElementById('modEnglishLevel')?.value) || 5,
+
+    // Work type & Setup
+    canDoWebcams: document.getElementById('modCanWebcam')?.checked || false,
+    canDoContent: document.getElementById('modCanContent')?.checked || false,
+    phone: document.getElementById('modPhone')?.value?.trim() || '',
+    pc: document.getElementById('modPC')?.value?.trim() || '',
+    hasWebcam: document.getElementById('modHasWebcam')?.checked || false,
+    hasLovense: document.getElementById('modHasLovense')?.checked || false,
+
+    // Background
     hasJob: document.getElementById('modHasJob')?.checked || false,
     isStudying: document.getElementById('modStudying')?.checked || false,
     motivation: document.getElementById('modMotivation')?.value?.trim() || '',
     whyDoThis: document.getElementById('modWhy')?.value?.trim() || '',
     lifeSituation: document.getElementById('modLifeSituation')?.value?.trim() || '',
 
-    // Communication tracking
-    communicationNotes: [], // Array of {date, note, progress}
-    lastCommunication: null,
-    communicationStreak: 0
+    // Communication tracking (preserve existing or initialize)
+    communicationNotes: existingData.communicationNotes || [],
+    lastCommunication: existingData.lastCommunication || null,
+    communicationStreak: existingData.communicationStreak || 0
   };
 
-  // For active models - performance data
-  if (document.getElementById('modContentPerf')) {
+  // For active models - system access and performance data
+  if (status === 'active') {
+    data.hasSystemAccess = document.getElementById('modHasSystemAccess')?.checked || false;
+    data.systemUsername = document.getElementById('modSystemUser')?.value?.trim() || '';
+    data.systemPassword = document.getElementById('modSystemPass')?.value?.trim() || '';
     data.contentPerformance = document.getElementById('modContentPerf')?.value?.trim() || '';
     data.overallStatus = document.getElementById('modOverallStatus')?.value?.trim() || '';
     data.checklistProgress = document.getElementById('modChecklistProgress')?.value?.trim() || '';
+
+    // Set activation date if newly activated
+    if (editId) {
+      const existing = await DB.get('models', editId);
+      if (existing && existing.status !== 'active') {
+        data.activatedDate = new Date().toISOString();
+      } else if (existing && existing.activatedDate) {
+        data.activatedDate = existing.activatedDate;
+      }
+    } else {
+      data.activatedDate = new Date().toISOString();
+    }
   }
 
   if (editId) {
@@ -4492,8 +4639,7 @@ async function saveModel() {
     await DB.update('models', editId, data);
     toast('Model updated!', 'success');
   } else {
-    // Add new model as potential
-    data.status = 'potential';
+    // Add new model
     data.addedDate = new Date().toISOString();
     await DB.add('models', data);
     toast('Model added!', 'success');
