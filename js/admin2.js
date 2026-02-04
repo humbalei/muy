@@ -1931,6 +1931,15 @@ async function viewModelDetails(modelId) {
   modal('model', model);
 }
 
+function toggleActiveFields() {
+  const status = document.getElementById('modStatus')?.value;
+  const isActive = status === 'active';
+  const activeFields = document.getElementById('activeModelFields');
+  const activePerf = document.getElementById('activeModelPerf');
+  if (activeFields) activeFields.style.display = isActive ? 'block' : 'none';
+  if (activePerf) activePerf.style.display = isActive ? 'block' : 'none';
+}
+
 async function viewCommHistory(modelId) {
   const model = await DB.get('models', modelId);
   if (!model) {
@@ -3543,7 +3552,7 @@ async function modal(type, data) {
           </div>
         </div>
 
-        <div id="activeModelFields" style="margin-bottom:20px;padding-bottom:20px;border-bottom:2px solid #333;display:${!isEditModel || data.status === 'potential' ? 'none' : 'block'}">
+        <div id="activeModelFields" style="margin-bottom:20px;padding-bottom:20px;border-bottom:2px solid #333;display:${isEditModel && data.status === 'active' ? 'block' : 'none'}">
           <h3 style="color:#ff0;margin-bottom:15px">🟢 Active Model - System Access</h3>
           <div class="form-group">
             <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
@@ -3565,7 +3574,7 @@ async function modal(type, data) {
           </div>
         </div>
 
-        <div id="activeModelPerf" style="margin-bottom:20px;display:${!isEditModel || data.status === 'potential' ? 'none' : 'block'}">
+        <div id="activeModelPerf" style="margin-bottom:20px;display:${isEditModel && data.status === 'active' ? 'block' : 'none'}">
           <h3 style="color:#0f0;margin-bottom:15px">Active Model - Performance</h3>
           <div class="form-group">
             <label class="form-label">Content Performance (How is she doing with content creation?):</label>
@@ -3582,15 +3591,6 @@ async function modal(type, data) {
         </div>
 
         <button class="btn btn-primary" onclick="saveModel()">${isEditModel ? 'Update' : 'Save'} Model</button>
-
-        <script>
-          function toggleActiveFields() {
-            const status = document.getElementById('modStatus').value;
-            const isActive = status === 'active';
-            document.getElementById('activeModelFields').style.display = isActive ? 'block' : 'none';
-            document.getElementById('activeModelPerf').style.display = isActive ? 'block' : 'none';
-          }
-        </script>
       `;
       break;
 
