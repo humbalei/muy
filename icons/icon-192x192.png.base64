@@ -1,0 +1,3 @@
+# Placeholder - Generate PNG icons by opening generate-icons.html in browser
+# Or use this command to create basic icons:
+# convert -size 192x192 -background black -fill "#00ff00" -gravity center -pointsize 60 -font "Courier-Bold" label:"TEAM" icon-192x192.png
