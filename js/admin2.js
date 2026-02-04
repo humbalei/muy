@@ -1895,9 +1895,6 @@ async function logCommunication(modelId) {
     return;
   }
 
-  const note = prompt('Add a note about today\'s communication (optional):');
-  if (note === null) return; // User cancelled
-
   const today = new Date().toISOString().split('T')[0];
   const lastComm = model.lastCommunication ? new Date(model.lastCommunication).toISOString().split('T')[0] : null;
 
@@ -1907,40 +1904,8 @@ async function logCommunication(modelId) {
     return;
   }
 
-  // Calculate streak
-  let streak = model.communicationStreak || 0;
-  if (lastComm) {
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
-
-    if (lastComm === yesterdayStr) {
-      streak += 1; // Continue streak
-    } else {
-      streak = 1; // Reset streak
-    }
-  } else {
-    streak = 1; // First communication
-  }
-
-  // Add communication note
-  const commNotes = model.communicationNotes || [];
-  if (note && note.trim()) {
-    commNotes.push({
-      date: today,
-      note: note.trim(),
-      timestamp: new Date().toISOString()
-    });
-  }
-
-  await DB.update('models', modelId, {
-    lastCommunication: new Date().toISOString(),
-    communicationStreak: streak,
-    communicationNotes: commNotes
-  });
-
-  toast(`Communication logged! 🔥 ${streak} day streak`, 'success');
-  loadModels();
+  // Open modal with model data
+  modal('logComm', model);
 }
 
 async function moveToActive(modelId) {
@@ -1966,6 +1931,92 @@ async function viewModelDetails(modelId) {
   modal('model', model);
 }
 
+async function viewCommHistory(modelId) {
+  const model = await DB.get('models', modelId);
+  if (!model) {
+    toast('Model not found', 'error');
+    return;
+  }
+
+  const commNotes = model.communicationNotes || [];
+  const sortedNotes = [...commNotes].reverse(); // Most recent first
+
+  const m = document.getElementById('modal');
+  const title = document.getElementById('modalTitle');
+  const body = document.getElementById('modalBody');
+
+  title.textContent = `Communication History - ${model.name}`;
+  document.getElementById('mBox').className = 'modal-box large';
+
+  const today = new Date().toISOString().split('T')[0];
+  const lastComm = model.lastCommunication ? new Date(model.lastCommunication).toISOString().split('T')[0] : null;
+  const daysSince = lastComm ? Math.floor((new Date(today) - new Date(lastComm)) / (1000 * 60 * 60 * 24)) : null;
+  const streak = model.communicationStreak || 0;
+
+  body.innerHTML = `
+    <div style="margin-bottom:20px;padding:15px;background:#0a0a0a;border:1px solid #333;border-radius:4px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:10px">
+        <div>
+          <div style="font-size:11px;color:#666">Last Communication:</div>
+          <div style="font-size:14px;color:${daysSince === null ? '#f00' : (daysSince === 0 ? '#0f0' : '#ff0')};font-weight:bold">
+            ${daysSince === null ? 'Never' : (daysSince === 0 ? 'Today' : `${daysSince} days ago`)}
+          </div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:#666">Current Streak:</div>
+          <div style="font-size:14px;color:#ff0;font-weight:bold">🔥 ${streak} days</div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:#666">Total Communications:</div>
+        <div style="font-size:14px;color:#0f0;font-weight:bold">${commNotes.length} logged</div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:15px">
+      <h3 style="color:#0f0;margin-bottom:10px">Communication Log</h3>
+      ${sortedNotes.length > 0 ? `
+        <div style="max-height:400px;overflow-y:auto">
+          ${sortedNotes.map(note => {
+            const noteDate = new Date(note.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+            const progressIcon = note.progress === 'positive' ? '✅' : (note.progress === 'negative' ? '❌' : '➖');
+            const progressColor = note.progress === 'positive' ? '#0f0' : (note.progress === 'negative' ? '#f00' : '#ff0');
+            const progressLabel = note.progress === 'positive' ? 'Positive' : (note.progress === 'negative' ? 'Negative' : 'Neutral');
+
+            return `
+              <div style="margin-bottom:15px;padding:12px;background:#0a0a0a;border:1px solid #333;border-radius:4px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                  <div style="font-size:12px;color:#999">${noteDate}</div>
+                  <div style="display:flex;align-items:center;gap:5px">
+                    <span style="font-size:14px">${progressIcon}</span>
+                    <span style="font-size:11px;color:${progressColor};font-weight:bold">${progressLabel}</span>
+                  </div>
+                </div>
+                ${note.note ? `
+                  <div style="font-size:12px;color:#ccc;margin-bottom:8px;line-height:1.5">${note.note}</div>
+                ` : ''}
+                ${note.contentUpdate ? `
+                  <div style="margin-top:8px;padding:8px;background:#111;border-left:3px solid #0f0">
+                    <div style="font-size:10px;color:#0f0;margin-bottom:4px">Content Update:</div>
+                    <div style="font-size:11px;color:#999">${note.contentUpdate}</div>
+                  </div>
+                ` : ''}
+              </div>
+            `;
+          }).join('')}
+        </div>
+      ` : '<div class="empty-state">No communication history yet</div>'}
+    </div>
+
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-primary" onclick="closeModal();logCommunication('${modelId}')" style="flex:1">Log New Communication</button>
+      <button class="btn" onclick="closeModal()" style="flex:0;min-width:100px">Close</button>
+    </div>
+  `;
+
+  m.classList.add('active');
+}
+
 function renderModels(models) {
   if (!models.length) return '';
   let html = '';
@@ -1977,6 +2028,7 @@ function renderModels(models) {
     const daysSince = lastComm ? Math.floor((new Date(today) - new Date(lastComm)) / (1000 * 60 * 60 * 24)) : null;
     const needsContact = daysSince === null || daysSince > 0;
     const streak = m.communicationStreak || 0;
+    const isActive = m.status === 'active';
 
     // Contact status badges
     const contactBadges = [];
@@ -1984,6 +2036,21 @@ function renderModels(models) {
     if (m.onAssistantWhatsApp) contactBadges.push('<span title="On My WhatsApp" style="background:#25D366;color:#fff;padding:2px 6px;border-radius:2px;font-size:9px">My WA</span>');
     if (m.onBossTelegram) contactBadges.push('<span title="On Boss\'s Telegram" style="background:#0088cc;color:#fff;padding:2px 6px;border-radius:2px;font-size:9px">Boss TG</span>');
     if (m.onBossWhatsApp) contactBadges.push('<span title="On Boss\'s WhatsApp" style="background:#25D366;color:#fff;padding:2px 6px;border-radius:2px;font-size:9px">Boss WA</span>');
+
+    // Get recent communication notes (last 3)
+    const commNotes = m.communicationNotes || [];
+    const recentNotes = commNotes.slice(-3).reverse();
+
+    // Calculate progress trend (last 5 communications)
+    const last5 = commNotes.slice(-5);
+    const positiveCount = last5.filter(n => n.progress === 'positive').length;
+    const negativeCount = last5.filter(n => n.progress === 'negative').length;
+    let trendIndicator = '';
+    if (last5.length >= 3) {
+      if (positiveCount >= 3) trendIndicator = '<span style="color:#0f0;font-size:10px">📈 Trending Up</span>';
+      else if (negativeCount >= 3) trendIndicator = '<span style="color:#f00;font-size:10px">📉 Needs Attention</span>';
+      else trendIndicator = '<span style="color:#ff0;font-size:10px">➡️ Stable</span>';
+    }
 
     html += `<div class="model-card" style="cursor:default;padding:12px">
       <div class="model-card-img" onclick="modal('model',${JSON.stringify(m).replace(/"/g, '&quot;')})" style="cursor:pointer">
@@ -2006,14 +2073,31 @@ function renderModels(models) {
             <span style="font-size:11px;color:${needsContact ? '#f00' : '#0f0'}">${needsContact ? (daysSince === null ? 'Never' : `${daysSince}d ago`) : 'Today ✓'}</span>
           </div>
           ${streak > 0 ? `<div style="font-size:10px;color:#ff0">🔥 ${streak} day streak</div>` : ''}
+          ${trendIndicator ? `<div style="margin-top:4px">${trendIndicator}</div>` : ''}
         </div>
+
+        ${isActive && recentNotes.length > 0 ? `
+        <div style="margin:8px 0;padding:8px;background:#0a0a0a;border:1px solid #222;border-radius:3px">
+          <div style="font-size:10px;color:#666;margin-bottom:5px">Recent Activity:</div>
+          ${recentNotes.map(note => {
+            const noteDate = new Date(note.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            const progressIcon = note.progress === 'positive' ? '✅' : (note.progress === 'negative' ? '❌' : '➖');
+            const noteText = note.note.length > 50 ? note.note.substring(0, 50) + '...' : note.note;
+            return `<div style="font-size:9px;color:#999;margin:3px 0;display:flex;gap:5px">
+              <span>${progressIcon}</span>
+              <span style="color:#666">${noteDate}:</span>
+              <span>${noteText || 'No note'}</span>
+            </div>`;
+          }).join('')}
+        </div>
+        ` : ''}
 
         <div style="display:flex;gap:5px;margin-top:8px">
           <button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px" onclick="logCommunication('${m.id}')">Log Today</button>
           <button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px" onclick="modal('model',${JSON.stringify(m).replace(/"/g, '&quot;')})">Edit</button>
           ${m.status === 'potential' ?
             `<button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px;background:#0f0;color:#000" onclick="moveToActive('${m.id}')">Active</button>` :
-            `<button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px" onclick="viewModelDetails('${m.id}')">View</button>`
+            `<button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px" onclick="viewCommHistory('${m.id}')">History</button>`
           }
         </div>
       </div>
@@ -3225,6 +3309,63 @@ async function modal(type, data) {
       `;
       break;
 
+    case 'logComm':
+      // data should be the model object
+      if (!data || !data.id) {
+        toast('Invalid model data', 'error');
+        return;
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+      const lastComm = data.lastCommunication ? new Date(data.lastCommunication).toISOString().split('T')[0] : null;
+      const daysSince = lastComm ? Math.floor((new Date(today) - new Date(lastComm)) / (1000 * 60 * 60 * 24)) : null;
+      const streak = data.communicationStreak || 0;
+      const isActive = data.status === 'active';
+
+      title.textContent = `Log Communication - ${data.name}`;
+      document.getElementById('mBox').className = 'modal-box';
+      body.innerHTML = `
+        <input type="hidden" id="commModelId" value="${data.id}">
+        <input type="hidden" id="commModelStatus" value="${data.status}">
+
+        <div style="margin-bottom:20px;padding:15px;background:#0a0a0a;border:1px solid #333;border-radius:4px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+            <span style="color:#999;font-size:12px">Last Communication:</span>
+            <span style="color:${daysSince === null ? '#f00' : (daysSince === 0 ? '#0f0' : '#ff0')};font-size:12px;font-weight:bold">
+              ${daysSince === null ? 'Never' : (daysSince === 0 ? 'Today' : `${daysSince} days ago`)}
+            </span>
+          </div>
+          ${streak > 0 ? `<div style="color:#ff0;font-size:12px">🔥 Current Streak: ${streak} days</div>` : ''}
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Communication Notes (What happened today?):</label>
+          <textarea class="form-textarea" id="commNote" style="min-height:100px" placeholder="Describe today's communication..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Progress Status:</label>
+          <select class="form-select" id="commProgress">
+            <option value="positive">✅ Positive (Moving forward, good response)</option>
+            <option value="neutral">➖ Neutral (Regular check-in, no change)</option>
+            <option value="negative">❌ Negative (Issues, concerns, problems)</option>
+          </select>
+        </div>
+
+        ${isActive ? `
+        <div class="form-group">
+          <label class="form-label">Content Update (Optional - for active models):</label>
+          <textarea class="form-textarea" id="commContent" style="min-height:80px" placeholder="Any content performance updates, what she posted, results..."></textarea>
+        </div>
+        ` : ''}
+
+        <div style="display:flex;gap:10px;margin-top:20px">
+          <button class="btn btn-primary" onclick="saveCommLog()" style="flex:1">Save Communication</button>
+          <button class="btn" onclick="closeModal()" style="flex:0;min-width:100px">Cancel</button>
+        </div>
+      `;
+      break;
+
     case 'model':
       const isEditModel = data && data.id;
       title.textContent = isEditModel ? `Edit ${data.name}` : 'Add New Model';
@@ -4357,6 +4498,85 @@ async function saveModel() {
     await DB.add('models', data);
     toast('Model added!', 'success');
   }
+
+  closeModal();
+  loadModels();
+}
+
+async function saveCommLog() {
+  const modelId = document.getElementById('commModelId')?.value;
+  const modelStatus = document.getElementById('commModelStatus')?.value;
+  const note = document.getElementById('commNote')?.value?.trim();
+  const progress = document.getElementById('commProgress')?.value;
+  const contentUpdate = document.getElementById('commContent')?.value?.trim();
+
+  if (!modelId) {
+    toast('Model ID missing', 'error');
+    return;
+  }
+
+  // Get current model data
+  const model = await DB.get('models', modelId);
+  if (!model) {
+    toast('Model not found', 'error');
+    return;
+  }
+
+  const today = new Date().toISOString().split('T')[0];
+  const lastComm = model.lastCommunication ? new Date(model.lastCommunication).toISOString().split('T')[0] : null;
+
+  // Calculate streak
+  let streak = model.communicationStreak || 0;
+  if (lastComm) {
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+    if (lastComm === yesterdayStr) {
+      streak += 1; // Continue streak
+    } else {
+      streak = 1; // Reset streak
+    }
+  } else {
+    streak = 1; // First communication
+  }
+
+  // Prepare communication note entry
+  const commNotes = model.communicationNotes || [];
+  const noteEntry = {
+    date: today,
+    note: note || '',
+    progress: progress,
+    timestamp: new Date().toISOString()
+  };
+
+  // Add content update if provided and model is active
+  if (contentUpdate && modelStatus === 'active') {
+    noteEntry.contentUpdate = contentUpdate;
+  }
+
+  commNotes.push(noteEntry);
+
+  // Update model
+  const updateData = {
+    lastCommunication: new Date().toISOString(),
+    communicationStreak: streak,
+    communicationNotes: commNotes
+  };
+
+  // If content update provided for active model, update contentPerformance field
+  if (contentUpdate && modelStatus === 'active') {
+    const existingPerf = model.contentPerformance || '';
+    const dateStamp = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    updateData.contentPerformance = existingPerf
+      ? `${existingPerf}\n\n[${dateStamp}] ${contentUpdate}`
+      : `[${dateStamp}] ${contentUpdate}`;
+  }
+
+  await DB.update('models', modelId, updateData);
+
+  const progressEmoji = progress === 'positive' ? '✅' : (progress === 'negative' ? '❌' : '➖');
+  toast(`${progressEmoji} Communication logged! 🔥 ${streak} day streak`, 'success');
 
   closeModal();
   loadModels();
