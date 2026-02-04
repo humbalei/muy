@@ -2292,7 +2292,7 @@ async function saveRate() {
 // ============================================
 // MODAL
 // ============================================
-function modal(type, data) {
+async function modal(type, data) {
   const m = document.getElementById('modal');
   const title = document.getElementById('mTitle');
   const body = document.getElementById('mBody');
