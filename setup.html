@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>SETUP - Create Users</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #000;
+      color: #0f0;
+      font-family: 'Courier New', monospace;
+      padding: 20px;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    h1 {
+      color: #0f0;
+      margin-bottom: 20px;
+      font-size: 24px;
+      text-align: center;
+      border-bottom: 2px solid #0f0;
+      padding-bottom: 10px;
+    }
+    .section {
+      background: #0a0a0a;
+      border: 2px solid #0f0;
+      padding: 20px;
+      margin: 20px 0;
+      border-radius: 8px;
+    }
+    .section h2 {
+      color: #0f0;
+      font-size: 18px;
+      margin-bottom: 15px;
+    }
+    button {
+      background: #0f0;
+      color: #000;
+      border: none;
+      padding: 15px 30px;
+      cursor: pointer;
+      font-family: 'Courier New', monospace;
+      font-weight: bold;
+      font-size: 16px;
+      margin: 10px 5px;
+      border-radius: 4px;
+      width: 100%;
+    }
+    button:hover {
+      background: #00ff00;
+      box-shadow: 0 0 10px #0f0;
+    }
+    button.secondary {
+      background: #333;
+      color: #0f0;
+      border: 1px solid #0f0;
+    }
+    .log {
+      background: #000;
+      border: 1px solid #0f0;
+      padding: 15px;
+      margin: 15px 0;
+      max-height: 300px;
+      overflow-y: auto;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .success { color: #0f0; }
+    .error { color: #f55; }
+    .warning { color: #ff0; }
+    .user-card {
+      background: #000;
+      border: 1px solid #0f0;
+      padding: 15px;
+      margin: 10px 0;
+      border-radius: 4px;
+    }
+    .user-card strong {
+      color: #0f0;
+      font-size: 18px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      margin-left: 10px;
+      font-size: 10px;
+      font-weight: bold;
+      border-radius: 3px;
+    }
+    .badge-admin {
+      background: #0f0;
+      color: #000;
+    }
+    .badge-assistant {
+      background: #ff0;
+      color: #000;
+    }
+    .empty {
+      text-align: center;
+      color: #666;
+      padding: 30px;
+      font-style: italic;
+    }
+    .loading {
+      text-align: center;
+      color: #ff0;
+      padding: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔧 SETUP - USER MANAGEMENT</h1>
+
+    <!-- SECTION 1: CURRENT USERS -->
+    <div class="section">
+      <h2>📋 CURRENT USERS IN DATABASE</h2>
+      <button class="secondary" onclick="loadCurrentUsers()">🔄 REFRESH LIST</button>
+      <div id="currentUsers" class="loading">⏳ Loading users...</div>
+    </div>
+
+    <!-- SECTION 2: CREATE DEFAULT USERS -->
+    <div class="section">
+      <h2>✨ CREATE DEFAULT USERS</h2>
+      <p style="color:#999;margin-bottom:15px;font-size:14px">
+        Creates these users if they don't exist:
+      </p>
+      <div style="background:#000;border:1px solid #333;padding:15px;margin:10px 0">
+        <div><strong style="color:#0f0">admin</strong> / Zuzufull981 <span class="badge badge-admin">ADMIN</span></div>
+        <div style="margin-top:10px"><strong style="color:#0f0">muy</strong> / MuyPass123 <span class="badge badge-assistant">ASSISTANT</span></div>
+      </div>
+      <button onclick="createDefaultUsers()">🚀 CREATE DEFAULT USERS NOW</button>
+      <div class="log" id="createLog" style="display:none"></div>
+    </div>
+
+    <!-- SECTION 3: TEST LOGIN -->
+    <div class="section">
+      <h2>🔐 TEST LOGIN</h2>
+      <div style="margin-bottom:15px">
+        <input type="text" id="testUser" placeholder="username" value="admin" style="width:100%;padding:12px;background:#0a0a0a;border:1px solid #0f0;color:#0f0;font-family:'Courier New',monospace;font-size:16px;margin-bottom:10px;border-radius:4px">
+        <input type="text" id="testPass" placeholder="password" value="Zuzufull981" style="width:100%;padding:12px;background:#0a0a0a;border:1px solid #0f0;color:#0f0;font-family:'Courier New',monospace;font-size:16px;border-radius:4px">
+      </div>
+      <button onclick="testLogin()">🧪 TEST LOGIN</button>
+      <div class="log" id="testLog" style="display:none"></div>
+    </div>
+
+    <!-- SECTION 4: ACTIONS -->
+    <div class="section">
+      <h2>🎯 QUICK ACTIONS</h2>
+      <button class="secondary" onclick="window.location.href='index.html'">← BACK TO LOGIN PAGE</button>
+      <button class="secondary" onclick="clearAllStorage()">🗑️ CLEAR ALL STORAGE (localStorage + sessionStorage)</button>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="js/config.js?v=1004"></script>
+
+  <script>
+    console.log('🔧 SETUP PAGE LOADED');
+    firebase.initializeApp(CONFIG.firebase);
+    const db = firebase.firestore();
+
+    // Auto-load users on page load
+    window.addEventListener('load', () => {
+      loadCurrentUsers();
+    });
+
+    function log(elementId, message, type = 'success') {
+      const logDiv = document.getElementById(elementId);
+      logDiv.style.display = 'block';
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = message;
+      logDiv.appendChild(line);
+      logDiv.scrollTop = logDiv.scrollHeight;
+      console.log(message);
+    }
+
+    async function loadCurrentUsers() {
+      const container = document.getElementById('currentUsers');
+      container.innerHTML = '<div class="loading">⏳ Loading users from Firebase...</div>';
+
+      try {
+        const snapshot = await db.collection('users').get();
+
+        if (snapshot.empty) {
+          container.innerHTML = '<div class="empty">❌ NO USERS FOUND<br><br>Click "CREATE DEFAULT USERS" button below to create admin and muy users.</div>';
+          return;
+        }
+
+        let html = '<div style="margin-bottom:10px;color:#0f0">✅ Found ' + snapshot.size + ' user(s):</div>';
+
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          const roleClass = data.role === 'admin' ? 'badge-admin' : 'badge-assistant';
+          const roleText = data.role === 'admin' ? 'ADMIN' : 'ASSISTANT';
+
+          html += `
+            <div class="user-card">
+              <div style="margin-bottom:8px">
+                <strong>@${doc.id}</strong>
+                <span class="badge ${roleClass}">${roleText}</span>
+              </div>
+              <div style="font-size:12px;color:#999">
+                Password: <span style="color:#0f0">${data.password}</span> (${data.password.length} chars)
+              </div>
+            </div>
+          `;
+        });
+
+        container.innerHTML = html;
+      } catch (error) {
+        container.innerHTML = '<div class="error">❌ ERROR: ' + error.message + '</div>';
+        console.error('Error loading users:', error);
+      }
+    }
+
+    async function createDefaultUsers() {
+      const logDiv = document.getElementById('createLog');
+      logDiv.innerHTML = '';
+      logDiv.style.display = 'block';
+
+      log('createLog', '🚀 Starting user creation...', 'success');
+
+      const defaultUsers = [
+        { id: 'admin', password: 'Zuzufull981', role: 'admin' },
+        { id: 'muy', password: 'MuyPass123', role: 'assistant' }
+      ];
+
+      for (const user of defaultUsers) {
+        try {
+          log('createLog', `\n📋 Checking user: ${user.id}...`, 'success');
+
+          const doc = await db.collection('users').doc(user.id).get();
+
+          if (doc.exists) {
+            const existingData = doc.data();
+            log('createLog', `⚠️  User "${user.id}" already exists`, 'warning');
+            log('createLog', `   Current: ${existingData.password} / ${existingData.role}`, 'warning');
+
+            // Update automatically to ensure correct credentials
+            await db.collection('users').doc(user.id).set({
+              password: user.password,
+              role: user.role
+            });
+            log('createLog', `✅ Updated "${user.id}" to: ${user.password} / ${user.role}`, 'success');
+          } else {
+            log('createLog', `➕ Creating user "${user.id}"...`, 'success');
+            await db.collection('users').doc(user.id).set({
+              password: user.password,
+              role: user.role
+            });
+            log('createLog', `✅ Created user "${user.id}"!`, 'success');
+            log('createLog', `   Username: ${user.id}`, 'success');
+            log('createLog', `   Password: ${user.password}`, 'success');
+            log('createLog', `   Role: ${user.role}`, 'success');
+          }
+        } catch (error) {
+          log('createLog', `❌ Error with "${user.id}": ${error.message}`, 'error');
+        }
+      }
+
+      log('createLog', '\n🎉 DONE! Users are ready.', 'success');
+      log('createLog', '\n📋 Login credentials:', 'success');
+      log('createLog', '   admin / Zuzufull981', 'success');
+      log('createLog', '   muy / MuyPass123', 'success');
+
+      // Refresh user list
+      setTimeout(() => loadCurrentUsers(), 1000);
+    }
+
+    async function testLogin() {
+      const username = document.getElementById('testUser').value.trim();
+      const password = document.getElementById('testPass').value;
+      const logDiv = document.getElementById('testLog');
+
+      logDiv.innerHTML = '';
+      logDiv.style.display = 'block';
+
+      log('testLog', '🔐 Testing login...', 'success');
+      log('testLog', `Username: ${username}`, 'success');
+      log('testLog', `Password: ${password} (${password.length} chars)`, 'success');
+
+      try {
+        const doc = await db.collection('users').doc(username.toLowerCase()).get();
+
+        if (!doc.exists) {
+          log('testLog', '\n❌ USER NOT FOUND!', 'error');
+          log('testLog', 'User "' + username + '" does not exist in database.', 'error');
+          return;
+        }
+
+        const data = doc.data();
+        log('testLog', '\n✅ User found in database!', 'success');
+        log('testLog', `Stored password: ${data.password}`, 'success');
+        log('testLog', `Your password: ${password}`, 'success');
+
+        if (data.password === password) {
+          log('testLog', '\n✅✅✅ LOGIN SUCCESS! ✅✅✅', 'success');
+          log('testLog', `Role: ${data.role}`, 'success');
+          log('testLog', '\n🎉 You can now login at: index.html', 'success');
+        } else {
+          log('testLog', '\n❌ WRONG PASSWORD!', 'error');
+          log('testLog', `Expected: "${data.password}"`, 'error');
+          log('testLog', `Got: "${password}"`, 'error');
+          log('testLog', 'Passwords do NOT match!', 'error');
+        }
+      } catch (error) {
+        log('testLog', '\n❌ ERROR: ' + error.message, 'error');
+      }
+    }
+
+    function clearAllStorage() {
+      if (confirm('Clear ALL storage (localStorage + sessionStorage)?\n\nThis will log you out.')) {
+        localStorage.clear();
+        sessionStorage.clear();
+        alert('✅ Storage cleared!\n\nYou can now login with fresh credentials.');
+        location.reload();
+      }
+    }
+  </script>
+</body>
+</html>
