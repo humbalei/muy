@@ -1332,21 +1332,43 @@ async function saveCorrection(reviewId, question) {
 // OUTREACH
 // ============================================
 async function loadOutreach() {
+  await loadOutreachAccounts();
+  await loadWarmupGuides();
+  await loadOutseeker();
+  await loadOpeners();
+  await loadFollowups();
+  await loadScripts();
+}
+
+async function loadWarmupGuides() {
+  const guide = await DB.getSetting('warmup_guide');
+  if (guide?.text) {
+    const html = `<div class="box" style="background:#001a00;border-color:#0f0">
+      <div class="box-header">Warmup Guide</div>
+      <div class="box-body" style="white-space:pre-wrap;font-size:11px">${guide.text}</div>
+    </div>`;
+    document.getElementById('warmupGuideIg').innerHTML = html;
+    document.getElementById('warmupGuideTw').innerHTML = html;
+  }
+}
+
+async function loadOutreachAccounts() {
   const ig = await DB.getAccounts('instagram');
   const tw = await DB.getAccounts('twitter');
   const wc = await DB.getAccounts('webcam');
 
   document.getElementById('igList').innerHTML = renderAccounts(ig);
   document.getElementById('twList').innerHTML = renderAccounts(tw);
-  document.getElementById('wcList').innerHTML = renderAccounts(wc);
+  document.getElementById('wcList').innerHTML = renderWebcamAccounts(wc);
+}
 
-  // Outseeker
+async function loadOutseeker() {
   const logs = await DB.getOutseekerLogs();
   const latest = logs[0];
   if (latest) {
-    document.getElementById('osA').textContent = latest.activeAccounts || 0;
-    document.getElementById('osU').textContent = latest.usaRunning || 0;
-    document.getElementById('osE').textContent = latest.espRunning || 0;
+    document.getElementById('osActive').textContent = latest.activeAccounts || 0;
+    document.getElementById('osUSA').textContent = latest.usaRunning || 0;
+    document.getElementById('osESP').textContent = latest.espRunning || 0;
   }
 
   let osHtml = '';
@@ -1357,12 +1379,63 @@ async function loadOutreach() {
     </div>`;
   });
   document.getElementById('osLog').innerHTML = osHtml || '<div class="empty-state">No outseeker logs</div>';
+}
 
-  // Scripts
-  const scripts = await DB.getScripts();
-  document.getElementById('scOpen').innerHTML = renderScripts(scripts.filter(s => s.type === 'opener'));
-  document.getElementById('scFollow').innerHTML = renderScripts(scripts.filter(s => s.type === 'followup'));
-  document.getElementById('scScript').innerHTML = renderScripts(scripts.filter(s => s.type === 'script'));
+async function loadOpeners() {
+  const filter = document.getElementById('openerFilter')?.value || '';
+  let scripts = await DB.getScripts('opener');
+  if (filter) scripts = scripts.filter(s => s.platform === filter);
+
+  let html = '';
+  scripts.forEach(s => {
+    html += `<div class="script-box ${s.active ? 'selected' : ''}" onclick="copyToClipboard('${encodeURIComponent(s.text)}')">
+      <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+        <span class="status status-${s.platform === 'instagram' ? 'healthy' : s.platform === 'twitter' ? 'pending' : 'live'}">${s.platform}</span>
+        <span>${s.active ? '(Active)' : ''}</span>
+      </div>
+      ${s.text}
+      <div style="margin-top:5px;font-size:10px;color:#666">Click to copy</div>
+    </div>`;
+  });
+  document.getElementById('openerList').innerHTML = html || '<div class="empty-state">No openers</div>';
+}
+
+async function loadFollowups() {
+  const filter = document.getElementById('followupFilter')?.value || '';
+  let scripts = await DB.getScripts('followup');
+  if (filter) scripts = scripts.filter(s => s.platform === filter);
+
+  let html = '';
+  scripts.forEach(s => {
+    html += `<div class="script-box ${s.active ? 'selected' : ''}" onclick="copyToClipboard('${encodeURIComponent(s.text)}')">
+      <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+        <span class="status status-${s.platform === 'instagram' ? 'healthy' : s.platform === 'twitter' ? 'pending' : 'live'}">${s.platform}</span>
+        <span>${s.active ? '(Active)' : ''}</span>
+      </div>
+      ${s.text}
+      <div style="margin-top:5px;font-size:10px;color:#666">Click to copy</div>
+    </div>`;
+  });
+  document.getElementById('followupList').innerHTML = html || '<div class="empty-state">No follow-ups</div>';
+}
+
+async function loadScripts() {
+  const scripts = await DB.getScripts('script');
+
+  let html = '';
+  scripts.forEach(s => {
+    html += `<div class="script-box" onclick="copyToClipboard('${encodeURIComponent(s.text)}')">
+      <div style="margin-bottom:5px"><strong>${s.title || 'Script'}</strong></div>
+      ${s.text}
+      <div style="margin-top:5px;font-size:10px;color:#666">Click to copy</div>
+    </div>`;
+  });
+  document.getElementById('scriptList').innerHTML = html || '<div class="empty-state">No scripts</div>';
+}
+
+function copyToClipboard(text) {
+  navigator.clipboard.writeText(decodeURIComponent(text));
+  toast('Copied to clipboard!', 'success');
 }
 
 function renderAccounts(accs) {
@@ -1376,9 +1449,36 @@ function renderAccounts(accs) {
       </div>
       <div class="acc-card-body">
         <div>Location: ${a.location || '-'}</div>
-        ${a.proxyStatus ? `<div>Proxy: ${a.proxyStatus} ${a.proxyType || ''}</div>` : ''}
+        <div>Proxy: ${a.proxyStatus || '-'} ${a.proxyType || ''}</div>
+        ${a.proxyDetails ? `<div>Proxy Details: ${a.proxyDetails}</div>` : ''}
       </div>
       <div class="acc-card-actions">
+        <button class="btn btn-sm" onclick="editOutreachAcc('${a.id}')">Edit</button>
+        <button class="btn btn-sm" onclick="delAcc('${a.id}')">Delete</button>
+      </div>
+    </div>`;
+  });
+  return html;
+}
+
+function renderWebcamAccounts(accs) {
+  if (!accs.length) return '<div class="empty-state">No accounts</div>';
+  let html = '';
+  accs.forEach(a => {
+    html += `<div class="acc-card">
+      <div class="acc-card-header">
+        <span class="acc-card-title">${a.username}</span>
+        <span class="status ${a.healthy ? 'status-healthy' : 'status-expired'}">${a.healthy ? 'Active' : 'Inactive'}</span>
+      </div>
+      <div class="acc-card-body">
+        <div>Site: ${a.site || '-'}</div>
+        <div>Location: ${a.location || '-'}</div>
+        ${a.outreachMethod ? `<div style="margin-top:5px;padding:5px;background:#111;border:1px solid #333">
+          <strong>Outreach Method:</strong><br>${a.outreachMethod}
+        </div>` : ''}
+      </div>
+      <div class="acc-card-actions">
+        <button class="btn btn-sm" onclick="editOutreachAcc('${a.id}')">Edit</button>
         <button class="btn btn-sm" onclick="delAcc('${a.id}')">Delete</button>
       </div>
     </div>`;
@@ -1409,8 +1509,13 @@ async function delAcc(id) {
   if (await confirmDialog('Delete this account?')) {
     await DB.delete('accounts', id);
     toast('Account deleted', 'success');
-    loadOutreach();
+    loadOutreachAccounts();
   }
+}
+
+async function editOutreachAcc(id) {
+  const acc = await DB.get('accounts', id);
+  modal('outreach-acc-edit', acc);
 }
 
 async function delScript(id) {
@@ -2201,6 +2306,181 @@ function modal(type, data) {
       `;
       break;
 
+    case 'outreach-acc':
+      title.textContent = `Add ${data.charAt(0).toUpperCase() + data.slice(1)} Account`;
+      if (data === 'webcam') {
+        body.innerHTML = `
+          <div class="form-group">
+            <label class="form-label">Username:</label>
+            <input type="text" class="form-input" id="accUser">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Site:</label>
+            <input type="text" class="form-input" id="accSite" placeholder="e.g. Chaturbate, StripChat">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Location:</label>
+            <select class="form-select" id="accLoc">
+              <option>Phone</option>
+              <option>PC</option>
+              <option>AdsPower</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Status:</label>
+            <select class="form-select" id="accHealthy">
+              <option value="true">Active</option>
+              <option value="false">Inactive</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" onclick="saveOutreachAcc('webcam')">Save</button>
+        `;
+      } else {
+        body.innerHTML = `
+          <div class="form-group">
+            <label class="form-label">Username:</label>
+            <input type="text" class="form-input" id="accUser">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Location:</label>
+            <select class="form-select" id="accLoc">
+              <option>Phone</option>
+              <option>PC</option>
+              <option>AdsPower</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Status:</label>
+            <select class="form-select" id="accHealthy">
+              <option value="true">Healthy</option>
+              <option value="false">Expired</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Proxy Status:</label>
+            <select class="form-select" id="accProxyStat">
+              <option>Live</option>
+              <option>Expired</option>
+              <option>None</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Proxy Type:</label>
+            <select class="form-select" id="accProxyType">
+              <option>HTTPS</option>
+              <option>SOCKS5</option>
+              <option>None</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Proxy Details:</label>
+            <input type="text" class="form-input" id="accProxyDetails" placeholder="IP:Port:User:Pass">
+          </div>
+          <button class="btn btn-primary" onclick="saveOutreachAcc('${data}')">Save</button>
+        `;
+      }
+      break;
+
+    case 'outreach-acc-edit':
+      title.textContent = 'Edit Account';
+      if (data.type === 'webcam') {
+        body.innerHTML = `
+          <input type="hidden" id="editAccId" value="${data.id}">
+          <div class="form-group">
+            <label class="form-label">Username:</label>
+            <input type="text" class="form-input" id="accUser" value="${data.username || ''}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Site:</label>
+            <input type="text" class="form-input" id="accSite" value="${data.site || ''}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Location:</label>
+            <select class="form-select" id="accLoc">
+              <option ${data.location === 'Phone' ? 'selected' : ''}>Phone</option>
+              <option ${data.location === 'PC' ? 'selected' : ''}>PC</option>
+              <option ${data.location === 'AdsPower' ? 'selected' : ''}>AdsPower</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Status:</label>
+            <select class="form-select" id="accHealthy">
+              <option value="true" ${data.healthy ? 'selected' : ''}>Active</option>
+              <option value="false" ${!data.healthy ? 'selected' : ''}>Inactive</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" onclick="updateOutreachAcc('webcam')">Update</button>
+        `;
+      } else {
+        body.innerHTML = `
+          <input type="hidden" id="editAccId" value="${data.id}">
+          <div class="form-group">
+            <label class="form-label">Username:</label>
+            <input type="text" class="form-input" id="accUser" value="${data.username || ''}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Location:</label>
+            <select class="form-select" id="accLoc">
+              <option ${data.location === 'Phone' ? 'selected' : ''}>Phone</option>
+              <option ${data.location === 'PC' ? 'selected' : ''}>PC</option>
+              <option ${data.location === 'AdsPower' ? 'selected' : ''}>AdsPower</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Status:</label>
+            <select class="form-select" id="accHealthy">
+              <option value="true" ${data.healthy ? 'selected' : ''}>Healthy</option>
+              <option value="false" ${!data.healthy ? 'selected' : ''}>Expired</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Proxy Status:</label>
+            <select class="form-select" id="accProxyStat">
+              <option ${data.proxyStatus === 'Live' ? 'selected' : ''}>Live</option>
+              <option ${data.proxyStatus === 'Expired' ? 'selected' : ''}>Expired</option>
+              <option ${data.proxyStatus === 'None' ? 'selected' : ''}>None</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Proxy Type:</label>
+            <select class="form-select" id="accProxyType">
+              <option ${data.proxyType === 'HTTPS' ? 'selected' : ''}>HTTPS</option>
+              <option ${data.proxyType === 'SOCKS5' ? 'selected' : ''}>SOCKS5</option>
+              <option ${data.proxyType === 'None' ? 'selected' : ''}>None</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Proxy Details:</label>
+            <input type="text" class="form-input" id="accProxyDetails" value="${data.proxyDetails || ''}">
+          </div>
+          <button class="btn btn-primary" onclick="updateOutreachAcc('${data.type}')">Update</button>
+        `;
+      }
+      break;
+
+    case 'outseeker':
+      title.textContent = 'Log Outseeker Data';
+      body.innerHTML = `
+        <div class="form-group">
+          <label class="form-label">Active OF Accounts:</label>
+          <input type="number" class="form-input" id="osAcc" value="0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">USA Running:</label>
+          <input type="number" class="form-input" id="osUSAIn" value="0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">ESP Running:</label>
+          <input type="number" class="form-input" id="osESPIn" value="0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Accounts Outreached Today:</label>
+          <input type="number" class="form-input" id="osOutreached" value="0">
+        </div>
+        <button class="btn btn-primary" onclick="saveOutseeker()">Save</button>
+      `;
+      break;
+
     case 'model':
       title.textContent = 'Add Model';
       document.getElementById('mBox').className = 'modal-box large';
@@ -2976,6 +3256,66 @@ async function saveAcc(type) {
   });
   closeModal();
   loadOutreach();
+}
+
+async function saveOutreachAcc(type) {
+  const data = {
+    type,
+    userId: userId,
+    username: document.getElementById('accUser').value,
+    location: document.getElementById('accLoc').value,
+    healthy: document.getElementById('accHealthy').value === 'true'
+  };
+
+  if (type === 'webcam') {
+    data.site = document.getElementById('accSite').value;
+  } else {
+    data.proxyStatus = document.getElementById('accProxyStat').value;
+    data.proxyType = document.getElementById('accProxyType').value;
+    data.proxyDetails = document.getElementById('accProxyDetails').value;
+  }
+
+  await DB.add('accounts', data);
+  closeModal();
+  toast('Account added!', 'success');
+  loadOutreachAccounts();
+}
+
+async function updateOutreachAcc(type) {
+  const id = document.getElementById('editAccId').value;
+  const data = {
+    username: document.getElementById('accUser').value,
+    location: document.getElementById('accLoc').value,
+    healthy: document.getElementById('accHealthy').value === 'true'
+  };
+
+  if (type === 'webcam') {
+    data.site = document.getElementById('accSite').value;
+  } else {
+    data.proxyStatus = document.getElementById('accProxyStat').value;
+    data.proxyType = document.getElementById('accProxyType').value;
+    data.proxyDetails = document.getElementById('accProxyDetails').value;
+  }
+
+  await DB.update('accounts', id, data);
+  closeModal();
+  toast('Account updated!', 'success');
+  loadOutreachAccounts();
+}
+
+async function saveOutseeker() {
+  const today = new Date().toISOString().split('T')[0];
+  await DB.set('outseeker_logs', `${userId}_${today}`, {
+    userId: userId,
+    date: today,
+    activeAccounts: parseInt(document.getElementById('osAcc').value) || 0,
+    usaRunning: parseInt(document.getElementById('osUSAIn').value) || 0,
+    espRunning: parseInt(document.getElementById('osESPIn').value) || 0,
+    outreached: parseInt(document.getElementById('osOutreached').value) || 0
+  });
+  closeModal();
+  toast('Outseeker data saved!', 'success');
+  loadOutseeker();
 }
 
 async function saveScript(type) {

@@ -987,10 +987,10 @@ a:hover {
 
 /* Prompt Card */
 .prompt-card {
-  background: #111;
-  border: 1px solid #222;
+  background: #1a1a1a;
+  border: 1px solid #333;
   padding: 15px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
   border-radius: 4px;
 }
 
@@ -999,11 +999,13 @@ a:hover {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 10px;
+  color: #aaa;
 }
 
 .prompt-card-account {
   font-weight: bold;
   color: #0f0;
+  font-size: 13px;
 }
 
 .prompt-card-text {
@@ -1011,10 +1013,12 @@ a:hover {
   padding: 10px;
   border-radius: 4px;
   font-family: monospace;
-  font-size: 11px;
-  color: #ccc;
+  font-size: 12px;
+  color: #eee;
   margin-bottom: 10px;
   white-space: pre-wrap;
+  line-height: 1.5;
+  border: 1px solid #222;
 }
 
 .prompt-card-refs {
@@ -1024,24 +1028,35 @@ a:hover {
 }
 
 .prompt-card-refs img {
-  width: 60px;
-  height: 60px;
+  width: 80px;
+  height: 80px;
   object-fit: cover;
   border-radius: 4px;
-  border: 1px solid #333;
+  border: 2px solid #444;
+  cursor: pointer;
+}
+
+.prompt-card-refs img:hover {
+  border-color: #0f0;
 }
 
 .prompt-card-result {
   margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px solid #222;
+  border-top: 1px solid #333;
 }
 
 .prompt-card-result img,
 .prompt-card-result video {
-  max-width: 150px;
-  max-height: 150px;
+  max-width: 200px;
+  max-height: 200px;
   border-radius: 4px;
+  border: 2px solid #444;
+  background: #000;
+}
+
+.prompt-card-result video {
+  cursor: pointer;
 }
 
 /* === CALENDAR === */
