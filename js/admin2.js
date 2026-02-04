@@ -2146,10 +2146,7 @@ function renderModels(models) {
         <div style="display:flex;gap:5px;margin-top:8px">
           <button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px" onclick="logCommunication('${m.id}')">Log Today</button>
           <button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px" onclick="modal('model',${JSON.stringify(m).replace(/"/g, '&quot;')})">Edit</button>
-          ${m.status === 'potential' ?
-            `<button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px;background:#0f0;color:#000" onclick="moveToActive('${m.id}')">Active</button>` :
-            `<button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px" onclick="modal('modelView','${m.id}')">View</button>`
-          }
+          ${m.status === 'active' ? `<button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px" onclick="modal('modelView','${m.id}')">View</button>` : ''}
         </div>
       </div>
     </div>`;
@@ -3952,8 +3949,8 @@ async function loadModelView(id) {
   }
 
   const m = document.getElementById('modal');
-  const title = document.getElementById('modalTitle');
-  const body = document.getElementById('modalBody');
+  const title = document.getElementById('mTitle');
+  const body = document.getElementById('mBody');
 
   title.textContent = `${model.name} - Overview`;
   document.getElementById('mBox').className = 'modal-box large';
