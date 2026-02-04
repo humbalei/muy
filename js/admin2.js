@@ -1373,9 +1373,25 @@ async function loadOutseeker() {
 
   let osHtml = '';
   logs.forEach(l => {
-    osHtml += `<div class="list-item">
-      <span>${l.date}</span>
-      <span>Active: ${l.activeAccounts} | USA: ${l.usaRunning} | ESP: ${l.espRunning} | Outreached: ${l.outreached || 0}</span>
+    const today = new Date().toISOString().split('T')[0];
+    const isToday = l.date === today;
+    const usaOut = l.usaOutreached || 0;
+    const espOut = l.espOutreached || 0;
+    const totalOut = usaOut + espOut;
+    const logId = `${l.userId}_${l.date}`;
+
+    osHtml += `<div class="list-item" style="${isToday ? 'background:#001a00;border-left:3px solid #0f0' : ''}">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-weight:${isToday ? 'bold' : 'normal'};color:${isToday ? '#0f0' : '#eee'}">${l.date}${isToday ? ' (Today)' : ''}</span>
+        <div style="font-size:10px;color:#999">
+          Active: ${l.activeAccounts || 0} | Running USA: ${l.usaRunning || 0} ESP: ${l.espRunning || 0} | Outreached USA: ${usaOut} ESP: ${espOut} Total: ${totalOut}
+        </div>
+      </div>
+      ${l.notes ? `<div style="font-size:10px;color:#666;margin-top:5px">${l.notes}</div>` : ''}
+      <div style="margin-top:8px;display:flex;gap:5px">
+        <button class="btn btn-sm" style="font-size:10px;padding:2px 8px" onclick="editOutseeker('${logId}')">Edit</button>
+        <button class="btn btn-sm" style="font-size:10px;padding:2px 8px" onclick="delOutseeker('${logId}')">Delete</button>
+      </div>
     </div>`;
   });
   document.getElementById('osLog').innerHTML = osHtml || '<div class="empty-state">No outseeker logs</div>';
@@ -2577,25 +2593,39 @@ async function modal(type, data) {
       break;
 
     case 'outseeker':
-      title.textContent = 'Log Outseeker Data';
+      title.textContent = data ? 'Edit Outseeker Log' : 'Log Outseeker Data';
+      const isEdit = data && data.id;
       body.innerHTML = `
+        ${isEdit ? `<input type="hidden" id="osEditId" value="${data.id}">` : ''}
         <div class="form-group">
-          <label class="form-label">Active OF Accounts:</label>
-          <input type="number" class="form-input" id="osAcc" value="0">
+          <label class="form-label">Active OF Accounts (Total):</label>
+          <input type="number" class="form-input" id="osAcc" value="${isEdit ? data.activeAccounts || 0 : 0}" min="0">
+        </div>
+        <div class="grid grid-2">
+          <div class="form-group">
+            <label class="form-label">USA Running Today:</label>
+            <input type="number" class="form-input" id="osUSAIn" value="${isEdit ? data.usaRunning || 0 : 0}" min="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label">ESP Running Today:</label>
+            <input type="number" class="form-input" id="osESPIn" value="${isEdit ? data.espRunning || 0 : 0}" min="0">
+          </div>
+        </div>
+        <div class="grid grid-2">
+          <div class="form-group">
+            <label class="form-label">Outreached Today (USA):</label>
+            <input type="number" class="form-input" id="osOutreachedUSA" value="${isEdit ? data.usaOutreached || 0 : 0}" min="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Outreached Today (ESP):</label>
+            <input type="number" class="form-input" id="osOutreachedESP" value="${isEdit ? data.espOutreached || 0 : 0}" min="0">
+          </div>
         </div>
         <div class="form-group">
-          <label class="form-label">USA Running:</label>
-          <input type="number" class="form-input" id="osUSAIn" value="0">
+          <label class="form-label">Notes (optional):</label>
+          <textarea class="form-textarea" id="osNotes" style="min-height:60px" placeholder="Poznámky k dnešnímu dni...">${isEdit ? data.notes || '' : ''}</textarea>
         </div>
-        <div class="form-group">
-          <label class="form-label">ESP Running:</label>
-          <input type="number" class="form-input" id="osESPIn" value="0">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Accounts Outreached Today:</label>
-          <input type="number" class="form-input" id="osOutreached" value="0">
-        </div>
-        <button class="btn btn-primary" onclick="saveOutseeker()">Save</button>
+        <button class="btn btn-primary" onclick="saveOutseeker()">${isEdit ? 'Update' : 'Save'} Data</button>
       `;
       break;
 
@@ -3422,18 +3452,56 @@ async function updateOutreachAcc(type) {
 }
 
 async function saveOutseeker() {
-  const today = new Date().toISOString().split('T')[0];
-  await DB.set('outseeker_logs', `${userId}_${today}`, {
+  const editId = document.getElementById('osEditId')?.value;
+  const usaOutreached = parseInt(document.getElementById('osOutreachedUSA').value) || 0;
+  const espOutreached = parseInt(document.getElementById('osOutreachedESP').value) || 0;
+
+  const data = {
     userId: userId,
-    date: today,
+    date: editId ? editId.split('_')[1] : new Date().toISOString().split('T')[0],
     activeAccounts: parseInt(document.getElementById('osAcc').value) || 0,
     usaRunning: parseInt(document.getElementById('osUSAIn').value) || 0,
     espRunning: parseInt(document.getElementById('osESPIn').value) || 0,
-    outreached: parseInt(document.getElementById('osOutreached').value) || 0
-  });
+    usaOutreached: usaOutreached,
+    espOutreached: espOutreached,
+    outreached: usaOutreached + espOutreached,
+    notes: document.getElementById('osNotes')?.value?.trim() || ''
+  };
+
+  const logId = editId || `${userId}_${data.date}`;
+  await DB.set('outseeker_logs', logId, data);
+
   closeModal();
-  toast('Outseeker data saved!', 'success');
+  toast(editId ? 'Outseeker log updated!' : 'Outseeker data saved!', 'success');
   loadOutseeker();
+}
+
+async function editOutseeker(logId) {
+  try {
+    const log = await DB.get('outseeker_logs', logId);
+    if (!log) {
+      toast('Log not found', 'error');
+      return;
+    }
+    log.id = logId;
+    modal('outseeker', log);
+  } catch (e) {
+    console.error('editOutseeker error:', e);
+    toast('Error loading log', 'error');
+  }
+}
+
+async function delOutseeker(logId) {
+  if (await confirmDialog('Delete this Outseeker log?')) {
+    try {
+      await DB.delete('outseeker_logs', logId);
+      toast('Log deleted', 'success');
+      loadOutseeker();
+    } catch (e) {
+      console.error('delOutseeker error:', e);
+      toast('Error deleting log', 'error');
+    }
+  }
 }
 
 async function saveScript(type) {
