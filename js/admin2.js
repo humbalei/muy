@@ -1638,6 +1638,7 @@ async function renderFollowupCard(s) {
 }
 
 async function loadScripts() {
+  const platformFilter = document.getElementById('scriptPlatformFilter')?.value || '';
   const accountFilter = document.getElementById('scriptAccountFilter')?.value || '';
   let scripts = await DB.getScripts('script');
 
@@ -1652,6 +1653,14 @@ async function loadScripts() {
       accountSelect.appendChild(opt);
     });
     if (accountFilter) accountSelect.value = accountFilter;
+  }
+
+  // Filter by platform
+  if (platformFilter) {
+    scripts = scripts.filter(s => {
+      const platforms = s.platforms || (s.platform ? [s.platform] : []);
+      return platforms.includes(platformFilter);
+    });
   }
 
   // Filter by account
