@@ -1359,28 +1359,34 @@ async function loadOutreachAccounts() {
 
   // Apply IG filters
   const igUsername = document.getElementById('igFilterUsername')?.value?.toLowerCase() || '';
+  const igDevice = document.getElementById('igFilterDevice')?.value?.toLowerCase() || '';
   const igLocation = document.getElementById('igFilterLocation')?.value || '';
   const igStatus = document.getElementById('igFilterStatus')?.value || '';
 
   if (igUsername) ig = ig.filter(a => a.username.toLowerCase().includes(igUsername));
+  if (igDevice) ig = ig.filter(a => (a.deviceName || '').toLowerCase().includes(igDevice));
   if (igLocation) ig = ig.filter(a => a.location === igLocation);
   if (igStatus !== '') ig = ig.filter(a => String(a.healthy) === igStatus);
 
   // Apply TW filters
   const twUsername = document.getElementById('twFilterUsername')?.value?.toLowerCase() || '';
+  const twDevice = document.getElementById('twFilterDevice')?.value?.toLowerCase() || '';
   const twLocation = document.getElementById('twFilterLocation')?.value || '';
   const twStatus = document.getElementById('twFilterStatus')?.value || '';
 
   if (twUsername) tw = tw.filter(a => a.username.toLowerCase().includes(twUsername));
+  if (twDevice) tw = tw.filter(a => (a.deviceName || '').toLowerCase().includes(twDevice));
   if (twLocation) tw = tw.filter(a => a.location === twLocation);
   if (twStatus !== '') tw = tw.filter(a => String(a.healthy) === twStatus);
 
   // Apply WC filters
   const wcUsername = document.getElementById('wcFilterUsername')?.value?.toLowerCase() || '';
+  const wcDevice = document.getElementById('wcFilterDevice')?.value?.toLowerCase() || '';
   const wcLocation = document.getElementById('wcFilterLocation')?.value || '';
   const wcStatus = document.getElementById('wcFilterStatus')?.value || '';
 
   if (wcUsername) wc = wc.filter(a => a.username.toLowerCase().includes(wcUsername));
+  if (wcDevice) wc = wc.filter(a => (a.deviceName || '').toLowerCase().includes(wcDevice));
   if (wcLocation) wc = wc.filter(a => a.location === wcLocation);
   if (wcStatus !== '') wc = wc.filter(a => String(a.healthy) === wcStatus);
 
