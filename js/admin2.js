@@ -1892,20 +1892,18 @@ async function loadLeads() {
     const total = leads.length;
     const isExpanded = currentExpandedCollection === coll.id;
 
-    const platformColor = coll.platform === 'instagram' ? '#E1306C' :
-                          coll.platform === 'twitter' ? '#1DA1F2' : '#FF5722';
     const platformLabel = coll.platform === 'instagram' ? '📷 Instagram' :
                           coll.platform === 'twitter' ? '🐦 Twitter' : '🎥 Webcams';
 
-    html += `<div style="margin-bottom:20px;border:2px solid ${platformColor};border-radius:6px;background:#0a0a0a;overflow:hidden">
+    html += `<div style="margin-bottom:20px;border:2px solid #333;border-radius:6px;background:#0a0a0a;overflow:hidden">
       <!-- Collection Header -->
-      <div style="padding:15px;background:linear-gradient(135deg, #0a0a0a 0%, #111 100%);cursor:pointer" onclick="toggleCollection('${coll.id}')">
+      <div style="padding:15px;background:#0a0a0a;cursor:pointer;border-bottom:${isExpanded ? '1px solid #333' : 'none'}" onclick="toggleCollection('${coll.id}')">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div style="flex:1">
             <h3 style="color:#0f0;margin:0 0 8px 0;font-size:16px;display:flex;align-items:center;gap:12px">
-              <span style="font-size:22px;transition:transform 0.3s;transform:rotate(${isExpanded ? '90' : '0'}deg)">▶</span>
+              <span style="font-size:18px;color:#0f0;transition:transform 0.3s;transform:rotate(${isExpanded ? '90' : '0'}deg)">▶</span>
               ${coll.name}
-              <span style="font-size:12px;background:${platformColor};color:#fff;padding:5px 12px;border-radius:4px">${platformLabel}</span>
+              <span style="font-size:11px;background:#333;color:#0f0;padding:5px 12px;border-radius:4px;border:1px solid #0f0">${platformLabel}</span>
             </h3>
             <div style="display:flex;gap:20px;font-size:12px;color:#999">
               <span>📊 Total: <strong style="color:#0f0">${total}</strong></span>
@@ -1914,8 +1912,8 @@ async function loadLeads() {
             </div>
           </div>
           <div style="display:flex;gap:8px" onclick="event.stopPropagation()">
-            <button class="btn btn-sm" style="font-size:11px;padding:6px 12px" onclick="editCollection('${coll.id}')">✏️ Edit</button>
-            <button class="btn btn-sm" style="font-size:11px;padding:6px 12px;background:#f55;color:#fff" onclick="deleteLeadCollection('${coll.id}')">🗑️</button>
+            <button class="btn btn-sm" style="font-size:11px;padding:6px 12px" onclick="editCollection('${coll.id}')">Edit</button>
+            <button class="btn btn-sm" style="font-size:11px;padding:6px 12px;background:#1a0a0a;border:1px solid #f55;color:#f55" onclick="deleteLeadCollection('${coll.id}')">Delete</button>
           </div>
         </div>
       </div>
