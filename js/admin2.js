@@ -3116,11 +3116,32 @@ async function loadSettings() {
 // ============================================
 async function loadUsers() {
   console.log('📋 Loading users...');
+  const usersListEl = document.getElementById('usersList');
+
+  if (!usersListEl) {
+    console.error('❌ usersList element not found!');
+    return;
+  }
+
   try {
+    // Check if DB is initialized
+    if (!DB || !DB.db) {
+      console.error('❌ DB not initialized!');
+      usersListEl.innerHTML = '<div class="empty-state" style="color:#f55">ERROR: Database not initialized. Refresh the page.</div>';
+      return;
+    }
+
+    console.log('📡 Fetching users from Firestore...');
     const snapshot = await DB.db.collection('users').get();
     const users = [];
+
     snapshot.forEach(doc => {
-      users.push({ id: doc.id, ...doc.data() });
+      const data = doc.data();
+      users.push({
+        id: doc.id,
+        password: data.password || 'NO_PASSWORD_SET',
+        role: data.role || 'assistant'
+      });
     });
 
     console.log('✅ Loaded users:', users.length);
@@ -3132,21 +3153,24 @@ async function loadUsers() {
       html = '<div style="display:grid;gap:10px">';
       users.forEach(user => {
         const roleColor = user.role === 'admin' ? '#0f0' : '#ff0';
-        const roleBadge = user.role === 'admin' ? 'ADMIN' : 'ASSISTANT';
+        const roleBadge = (user.role || 'assistant').toUpperCase();
+        const password = user.password || 'NO_PASSWORD';
+        const passwordLength = password.length;
+
         html += `
-          <div style="background:#000;border:1px solid #333;padding:15px;border-radius:4px;display:flex;justify-content:space-between;align-items:center">
-            <div style="flex:1">
-              <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <div style="background:#000;border:1px solid #333;padding:15px;border-radius:4px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+            <div style="flex:1;min-width:200px">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
                 <strong style="color:#0f0;font-size:16px;font-family:'Courier New',monospace">@${user.id}</strong>
                 <span style="background:${roleColor};color:#000;padding:2px 8px;font-size:10px;font-weight:bold;border-radius:3px">${roleBadge}</span>
               </div>
-              <div style="font-size:12px;color:#666;font-family:'Courier New',monospace">
-                Password: <span style="color:#999">${user.password}</span> (${user.password.length} chars)
+              <div style="font-size:12px;color:#666;font-family:'Courier New',monospace;word-break:break-all">
+                Password: <span style="color:#999">${password}</span> <span style="color:#555">(${passwordLength} chars)</span>
               </div>
             </div>
-            <div style="display:flex;gap:6px">
-              <button class="btn btn-sm" onclick="editUser('${user.id}')">Edit</button>
-              <button class="btn btn-sm" style="background:#000;border:1px solid #f55;color:#f55" onclick="deleteUser('${user.id}')">Delete</button>
+            <div style="display:flex;gap:6px;flex-shrink:0">
+              <button class="btn btn-sm" onclick="editUser('${user.id}')" style="font-size:11px;padding:6px 12px">Edit</button>
+              <button class="btn btn-sm" style="background:#000;border:1px solid #f55;color:#f55;font-size:11px;padding:6px 12px" onclick="deleteUser('${user.id}')">Delete</button>
             </div>
           </div>
         `;
@@ -3154,10 +3178,13 @@ async function loadUsers() {
       html += '</div>';
     }
 
-    document.getElementById('usersList').innerHTML = html;
+    usersListEl.innerHTML = html;
   } catch (err) {
     console.error('❌ Error loading users:', err);
-    toast('Error loading users: ' + err.message, 'error');
+    usersListEl.innerHTML = `<div class="empty-state" style="color:#f55">ERROR: ${err.message}<br><br>Check console for details.</div>`;
+    if (typeof toast === 'function') {
+      toast('Error loading users: ' + err.message, 'error');
+    }
   }
 }
 
