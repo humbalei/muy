@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Initialize Users</title>
+  <style>
+    body {
+      background: #000;
+      color: #0f0;
+      font-family: 'Courier New', monospace;
+      padding: 20px;
+    }
+    button {
+      background: #0f0;
+      color: #000;
+      border: none;
+      padding: 15px 30px;
+      cursor: pointer;
+      font-family: 'Courier New', monospace;
+      font-weight: bold;
+      font-size: 16px;
+      margin: 10px;
+    }
+    .log {
+      background: #0a0a0a;
+      border: 1px solid #0f0;
+      padding: 15px;
+      margin: 20px 0;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .success { color: #0f0; }
+    .error { color: #f55; }
+    .warning { color: #ff0; }
+  </style>
+</head>
+<body>
+  <h1>🔧 INITIALIZE DEFAULT USERS</h1>
+
+  <p>This will create default users if they don't exist:</p>
+  <ul>
+    <li><strong>admin</strong> / Zuzufull981 (Admin role)</li>
+    <li><strong>muy</strong> / MuyPass123 (Assistant role)</li>
+  </ul>
+
+  <button onclick="initUsers()">CREATE DEFAULT USERS</button>
+  <button onclick="clearLog()">CLEAR LOG</button>
+
+  <div class="log" id="log"></div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="js/config.js?v=1004"></script>
+
+  <script>
+    firebase.initializeApp(CONFIG.firebase);
+    const db = firebase.firestore();
+
+    function log(message, type = 'success') {
+      const logDiv = document.getElementById('log');
+      const line = document.createElement('div');
+      line.className = type;
+      line.textContent = message;
+      logDiv.appendChild(line);
+      logDiv.scrollTop = logDiv.scrollHeight;
+      console.log(message);
+    }
+
+    function clearLog() {
+      document.getElementById('log').innerHTML = '';
+    }
+
+    async function initUsers() {
+      log('🚀 Starting user initialization...', 'success');
+
+      const defaultUsers = [
+        { id: 'admin', password: 'Zuzufull981', role: 'admin' },
+        { id: 'muy', password: 'MuyPass123', role: 'assistant' }
+      ];
+
+      for (const user of defaultUsers) {
+        try {
+          log(`\n📋 Checking user: ${user.id}...`, 'success');
+
+          const doc = await db.collection('users').doc(user.id).get();
+
+          if (doc.exists) {
+            log(`⚠️  User "${user.id}" already exists`, 'warning');
+            const existingData = doc.data();
+            log(`   Current password: ${existingData.password}`, 'warning');
+            log(`   Current role: ${existingData.role}`, 'warning');
+
+            // Ask if user wants to update
+            if (confirm(`User "${user.id}" already exists.\n\nCurrent password: ${existingData.password}\nNew password: ${user.password}\n\nUpdate password?`)) {
+              await db.collection('users').doc(user.id).update({
+                password: user.password,
+                role: user.role
+              });
+              log(`✅ Updated user "${user.id}"`, 'success');
+            } else {
+              log(`⏭️  Skipped user "${user.id}"`, 'warning');
+            }
+          } else {
+            log(`➕ Creating user "${user.id}"...`, 'success');
+            await db.collection('users').doc(user.id).set({
+              password: user.password,
+              role: user.role
+            });
+            log(`✅ Created user "${user.id}" successfully!`, 'success');
+            log(`   Username: ${user.id}`, 'success');
+            log(`   Password: ${user.password}`, 'success');
+            log(`   Role: ${user.role}`, 'success');
+          }
+        } catch (error) {
+          log(`❌ Error with user "${user.id}": ${error.message}`, 'error');
+        }
+      }
+
+      log('\n🎉 User initialization complete!', 'success');
+      log('\n📋 You can now login with:', 'success');
+      log('   admin / Zuzufull981', 'success');
+      log('   muy / MuyPass123', 'success');
+    }
+  </script>
+</body>
+</html>

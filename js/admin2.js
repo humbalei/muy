@@ -3085,6 +3085,9 @@ async function delPosting(id) {
 // SETTINGS
 // ============================================
 async function loadSettings() {
+  // Load Users
+  await loadUsers();
+
   // Task Presets
   const presets = await DB.getTaskPresets();
   let html = '';
@@ -3106,6 +3109,174 @@ async function loadSettings() {
   // Hourly Rate
   const rate = await DB.getSetting('hourly_rate');
   document.getElementById('rateInput').value = rate?.value || CONFIG.hourlyRate;
+}
+
+// ============================================
+// USER MANAGEMENT
+// ============================================
+async function loadUsers() {
+  console.log('📋 Loading users...');
+  try {
+    const snapshot = await DB.db.collection('users').get();
+    const users = [];
+    snapshot.forEach(doc => {
+      users.push({ id: doc.id, ...doc.data() });
+    });
+
+    console.log('✅ Loaded users:', users.length);
+
+    let html = '';
+    if (users.length === 0) {
+      html = '<div class="empty-state">No users found. Add your first user!</div>';
+    } else {
+      html = '<div style="display:grid;gap:10px">';
+      users.forEach(user => {
+        const roleColor = user.role === 'admin' ? '#0f0' : '#ff0';
+        const roleBadge = user.role === 'admin' ? 'ADMIN' : 'ASSISTANT';
+        html += `
+          <div style="background:#000;border:1px solid #333;padding:15px;border-radius:4px;display:flex;justify-content:space-between;align-items:center">
+            <div style="flex:1">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+                <strong style="color:#0f0;font-size:16px;font-family:'Courier New',monospace">@${user.id}</strong>
+                <span style="background:${roleColor};color:#000;padding:2px 8px;font-size:10px;font-weight:bold;border-radius:3px">${roleBadge}</span>
+              </div>
+              <div style="font-size:12px;color:#666;font-family:'Courier New',monospace">
+                Password: <span style="color:#999">${user.password}</span> (${user.password.length} chars)
+              </div>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-sm" onclick="editUser('${user.id}')">Edit</button>
+              <button class="btn btn-sm" style="background:#000;border:1px solid #f55;color:#f55" onclick="deleteUser('${user.id}')">Delete</button>
+            </div>
+          </div>
+        `;
+      });
+      html += '</div>';
+    }
+
+    document.getElementById('usersList').innerHTML = html;
+  } catch (err) {
+    console.error('❌ Error loading users:', err);
+    toast('Error loading users: ' + err.message, 'error');
+  }
+}
+
+function showAddUserForm() {
+  document.getElementById('userForm').style.display = 'block';
+  document.getElementById('userFormTitle').textContent = 'Add New User';
+  document.getElementById('saveUserBtnText').textContent = 'Create User';
+  document.getElementById('editUserId').value = '';
+  document.getElementById('userUsername').value = '';
+  document.getElementById('userUsername').disabled = false;
+  document.getElementById('userPassword').value = '';
+  document.getElementById('userRole').value = 'assistant';
+}
+
+async function editUser(userId) {
+  try {
+    const doc = await DB.db.collection('users').doc(userId).get();
+    if (!doc.exists) {
+      toast('User not found', 'error');
+      return;
+    }
+
+    const user = doc.data();
+    document.getElementById('userForm').style.display = 'block';
+    document.getElementById('userFormTitle').textContent = 'Edit User: ' + userId;
+    document.getElementById('saveUserBtnText').textContent = 'Update User';
+    document.getElementById('editUserId').value = userId;
+    document.getElementById('userUsername').value = userId;
+    document.getElementById('userUsername').disabled = true; // Can't change username
+    document.getElementById('userPassword').value = user.password;
+    document.getElementById('userRole').value = user.role;
+
+    document.getElementById('userForm').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch (err) {
+    console.error('Error editing user:', err);
+    toast('Error loading user: ' + err.message, 'error');
+  }
+}
+
+async function saveUser() {
+  const editUserId = document.getElementById('editUserId').value;
+  const username = document.getElementById('userUsername').value.trim().toLowerCase();
+  const password = document.getElementById('userPassword').value;
+  const role = document.getElementById('userRole').value;
+
+  console.log('💾 Saving user:', { username, role, passwordLength: password.length });
+
+  // Validation
+  if (!username) {
+    toast('Username is required', 'error');
+    return;
+  }
+  if (!password) {
+    toast('Password is required', 'error');
+    return;
+  }
+  if (username.length < 2) {
+    toast('Username must be at least 2 characters', 'error');
+    return;
+  }
+  if (password.length < 4) {
+    toast('Password must be at least 4 characters', 'error');
+    return;
+  }
+
+  try {
+    const userData = {
+      password: password,
+      role: role
+    };
+
+    if (editUserId) {
+      // UPDATE existing user
+      console.log('📝 Updating user:', editUserId);
+      await DB.db.collection('users').doc(editUserId).update(userData);
+      toast('User updated! ✅', 'success');
+    } else {
+      // CREATE new user
+      console.log('✨ Creating new user:', username);
+      // Check if user already exists
+      const existing = await DB.db.collection('users').doc(username).get();
+      if (existing.exists) {
+        toast('User already exists! Choose a different username.', 'error');
+        return;
+      }
+      await DB.db.collection('users').doc(username).set(userData);
+      toast('User created! ✅', 'success');
+    }
+
+    cancelUserForm();
+    await loadUsers();
+  } catch (err) {
+    console.error('❌ Error saving user:', err);
+    toast('Error: ' + err.message, 'error');
+  }
+}
+
+function cancelUserForm() {
+  document.getElementById('userForm').style.display = 'none';
+  document.getElementById('editUserId').value = '';
+  document.getElementById('userUsername').value = '';
+  document.getElementById('userPassword').value = '';
+  document.getElementById('userRole').value = 'assistant';
+}
+
+async function deleteUser(userId) {
+  if (!confirm(`Delete user "${userId}"? This cannot be undone!`)) {
+    return;
+  }
+
+  try {
+    console.log('🗑️ Deleting user:', userId);
+    await DB.db.collection('users').doc(userId).delete();
+    toast('User deleted! ✅', 'success');
+    await loadUsers();
+  } catch (err) {
+    console.error('❌ Error deleting user:', err);
+    toast('Error: ' + err.message, 'error');
+  }
 }
 
 async function delPreset(id) {

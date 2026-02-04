@@ -18,7 +18,7 @@
   <link rel="apple-touch-icon" href="icons/icon.svg">
   <link rel="manifest" href="manifest.json">
 
-  <link rel="stylesheet" href="css/style.css?v=1003">
+  <link rel="stylesheet" href="css/style.css?v=1004">
 </head>
 <body>
   <!-- TOP BAR -->
@@ -600,12 +600,57 @@
     <div id="settings" class="section">
       <div class="section-title">Settings</div>
       <div class="tabs">
-        <div class="tab active" data-t="s-tasks">Task Presets</div>
+        <div class="tab active" data-t="s-users">👥 Users</div>
+        <div class="tab" data-t="s-tasks">Task Presets</div>
         <div class="tab" data-t="s-rate">Hourly Rate</div>
       </div>
 
+      <!-- Users Management -->
+      <div id="s-users" class="tab-content active">
+        <div class="box">
+          <div class="box-header">
+            User Management
+            <button class="btn btn-sm btn-primary" onclick="showAddUserForm()">+ Add User</button>
+          </div>
+          <div class="box-body">
+            <!-- Add/Edit User Form -->
+            <div id="userForm" style="display:none;margin-bottom:20px;padding:15px;background:#0a0a0a;border:1px solid #0f0">
+              <h3 style="color:#0f0;margin:0 0 15px 0;font-size:14px" id="userFormTitle">Add New User</h3>
+              <input type="hidden" id="editUserId">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px">
+                <div>
+                  <label style="display:block;color:#999;font-size:11px;margin-bottom:5px">Username:</label>
+                  <input type="text" class="form-input" id="userUsername" placeholder="e.g., admin, muy" style="width:100%">
+                </div>
+                <div>
+                  <label style="display:block;color:#999;font-size:11px;margin-bottom:5px">Role:</label>
+                  <select class="form-select" id="userRole" style="width:100%">
+                    <option value="admin">Admin</option>
+                    <option value="assistant">Assistant</option>
+                  </select>
+                </div>
+              </div>
+              <div style="margin-bottom:15px">
+                <label style="display:block;color:#999;font-size:11px;margin-bottom:5px">Password:</label>
+                <input type="text" class="form-input" id="userPassword" placeholder="Enter password" style="width:100%">
+                <div style="font-size:10px;color:#666;margin-top:5px">⚠️ Password is stored in plain text for simplicity</div>
+              </div>
+              <div style="display:flex;gap:10px">
+                <button class="btn btn-primary" onclick="saveUser()">
+                  <span id="saveUserBtnText">Create User</span>
+                </button>
+                <button class="btn" onclick="cancelUserForm()">Cancel</button>
+              </div>
+            </div>
+
+            <!-- Users List -->
+            <div id="usersList"></div>
+          </div>
+        </div>
+      </div>
+
       <!-- Task Presets -->
-      <div id="s-tasks" class="tab-content active">
+      <div id="s-tasks" class="tab-content">
         <div class="box">
           <div class="box-header">Daily Task Presets <button class="btn btn-sm btn-primary" onclick="modal('taskPreset')">Add Task</button></div>
           <div class="box-body" id="presetList"></div>
@@ -654,10 +699,10 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/piexifjs@1.0.6/piexif.min.js"></script>
-  <script src="js/config.js?v=1003"></script>
-  <script src="js/db.js?v=1003"></script>
-  <script src="js/video-spoof.js?v=1003"></script>
-  <script src="js/admin2.js?v=1003"></script>
+  <script src="js/config.js?v=1004"></script>
+  <script src="js/db.js?v=1004"></script>
+  <script src="js/video-spoof.js?v=1004"></script>
+  <script src="js/admin2.js?v=1004"></script>
 
   <!-- PWA Service Worker Registration -->
   <script>
