@@ -400,14 +400,22 @@
         <div class="box">
           <div class="box-header">Openers <button class="btn btn-sm btn-primary" onclick="modal('script','opener')">Add Opener</button></div>
           <div class="box-body">
-            <div class="form-group">
-              <label class="form-label">Filter by type:</label>
-              <select class="form-select" id="openerFilter" onchange="loadOpeners()" style="width:200px">
-                <option value="">All</option>
-                <option value="instagram">Instagram</option>
-                <option value="twitter">Twitter</option>
-                <option value="webcam">Webcam</option>
-              </select>
+            <div style="display:flex;gap:10px;margin-bottom:15px;flex-wrap:wrap">
+              <div class="form-group" style="margin:0">
+                <label class="form-label">Platform:</label>
+                <select class="form-select" id="openerFilter" onchange="loadOpeners()" style="width:150px">
+                  <option value="">All</option>
+                  <option value="instagram">Instagram</option>
+                  <option value="twitter">Twitter</option>
+                  <option value="webcam">Webcam</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin:0">
+                <label class="form-label">Account:</label>
+                <select class="form-select" id="openerAccountFilter" onchange="loadOpeners()" style="width:200px">
+                  <option value="">All Accounts</option>
+                </select>
+              </div>
             </div>
             <div id="openerList"></div>
           </div>
@@ -419,14 +427,22 @@
         <div class="box">
           <div class="box-header">Follow-ups <button class="btn btn-sm btn-primary" onclick="modal('script','followup')">Add Follow-up</button></div>
           <div class="box-body">
-            <div class="form-group">
-              <label class="form-label">Filter by type:</label>
-              <select class="form-select" id="followupFilter" onchange="loadFollowups()" style="width:200px">
-                <option value="">All</option>
-                <option value="instagram">Instagram</option>
-                <option value="twitter">Twitter</option>
-                <option value="webcam">Webcam</option>
-              </select>
+            <div style="display:flex;gap:10px;margin-bottom:15px;flex-wrap:wrap">
+              <div class="form-group" style="margin:0">
+                <label class="form-label">Platform:</label>
+                <select class="form-select" id="followupFilter" onchange="loadFollowups()" style="width:150px">
+                  <option value="">All</option>
+                  <option value="instagram">Instagram</option>
+                  <option value="twitter">Twitter</option>
+                  <option value="webcam">Webcam</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin:0">
+                <label class="form-label">Account:</label>
+                <select class="form-select" id="followupAccountFilter" onchange="loadFollowups()" style="width:200px">
+                  <option value="">All Accounts</option>
+                </select>
+              </div>
             </div>
             <div id="followupList"></div>
           </div>
@@ -437,7 +453,17 @@
       <div id="o-sc" class="tab-content">
         <div class="box">
           <div class="box-header">Conversation Scripts <button class="btn btn-sm btn-primary" onclick="modal('script','script')">Add Script</button></div>
-          <div class="box-body" id="scriptList"></div>
+          <div class="box-body">
+            <div style="display:flex;gap:10px;margin-bottom:15px;flex-wrap:wrap">
+              <div class="form-group" style="margin:0">
+                <label class="form-label">Account:</label>
+                <select class="form-select" id="scriptAccountFilter" onchange="loadScripts()" style="width:200px">
+                  <option value="">All Accounts</option>
+                </select>
+              </div>
+            </div>
+            <div id="scriptList"></div>
+          </div>
         </div>
       </div>
     </div>

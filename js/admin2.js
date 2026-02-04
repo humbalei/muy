@@ -1453,13 +1453,35 @@ async function loadOutseeker() {
 
 async function loadOpeners() {
   const filter = document.getElementById('openerFilter')?.value || '';
+  const accountFilter = document.getElementById('openerAccountFilter')?.value || '';
   let scripts = await DB.getScripts('opener');
+
+  // Populate account filter dropdown
+  const accounts = await DB.getAll('accounts', [{ field: 'userId', value: userId }]);
+  const accountSelect = document.getElementById('openerAccountFilter');
+  if (accountSelect && accountSelect.options.length === 1) {
+    accounts.forEach(a => {
+      const opt = document.createElement('option');
+      opt.value = a.id;
+      opt.textContent = `@${a.username} (${a.type})`;
+      accountSelect.appendChild(opt);
+    });
+    if (accountFilter) accountSelect.value = accountFilter;
+  }
 
   // Filter by platform - check if filter is in platforms array or old platform field
   if (filter) {
     scripts = scripts.filter(s => {
       const platforms = s.platforms || (s.platform ? [s.platform] : []);
       return platforms.includes(filter);
+    });
+  }
+
+  // Filter by account
+  if (accountFilter) {
+    scripts = scripts.filter(s => {
+      const accountIds = s.accountIds || (s.accountId ? [s.accountId] : []);
+      return accountIds.includes(accountFilter);
     });
   }
 
@@ -1524,13 +1546,35 @@ async function renderOpenerCard(s) {
 
 async function loadFollowups() {
   const filter = document.getElementById('followupFilter')?.value || '';
+  const accountFilter = document.getElementById('followupAccountFilter')?.value || '';
   let scripts = await DB.getScripts('followup');
+
+  // Populate account filter dropdown
+  const accounts = await DB.getAll('accounts', [{ field: 'userId', value: userId }]);
+  const accountSelect = document.getElementById('followupAccountFilter');
+  if (accountSelect && accountSelect.options.length === 1) {
+    accounts.forEach(a => {
+      const opt = document.createElement('option');
+      opt.value = a.id;
+      opt.textContent = `@${a.username} (${a.type})`;
+      accountSelect.appendChild(opt);
+    });
+    if (accountFilter) accountSelect.value = accountFilter;
+  }
 
   // Filter by platform - check if filter is in platforms array or old platform field
   if (filter) {
     scripts = scripts.filter(s => {
       const platforms = s.platforms || (s.platform ? [s.platform] : []);
       return platforms.includes(filter);
+    });
+  }
+
+  // Filter by account
+  if (accountFilter) {
+    scripts = scripts.filter(s => {
+      const accountIds = s.accountIds || (s.accountId ? [s.accountId] : []);
+      return accountIds.includes(accountFilter);
     });
   }
 
@@ -1594,7 +1638,29 @@ async function renderFollowupCard(s) {
 }
 
 async function loadScripts() {
-  const scripts = await DB.getScripts('script');
+  const accountFilter = document.getElementById('scriptAccountFilter')?.value || '';
+  let scripts = await DB.getScripts('script');
+
+  // Populate account filter dropdown
+  const accounts = await DB.getAll('accounts', [{ field: 'userId', value: userId }]);
+  const accountSelect = document.getElementById('scriptAccountFilter');
+  if (accountSelect && accountSelect.options.length === 1) {
+    accounts.forEach(a => {
+      const opt = document.createElement('option');
+      opt.value = a.id;
+      opt.textContent = `@${a.username} (${a.type})`;
+      accountSelect.appendChild(opt);
+    });
+    if (accountFilter) accountSelect.value = accountFilter;
+  }
+
+  // Filter by account
+  if (accountFilter) {
+    scripts = scripts.filter(s => {
+      const accountIds = s.accountIds || (s.accountId ? [s.accountId] : []);
+      return accountIds.includes(accountFilter);
+    });
+  }
 
   let html = '';
   for (const s of scripts) {
