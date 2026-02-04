@@ -1439,7 +1439,11 @@ async function renderOpenerCard(s) {
         ${s.active ? '<span style="color:#0f0;margin-left:8px;font-size:11px">● ACTIVE</span>' : ''}
         ${accountName ? `<span style="color:#999;margin-left:8px;font-size:11px">→ ${accountName}</span>` : ''}
       </div>
-      <button class="btn btn-sm" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();toggleScriptActive('${s.id}','opener')">${s.active ? 'Deactivate' : 'Activate'}</button>
+      <div style="display:flex;gap:5px">
+        <button class="btn btn-sm" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();toggleScriptActive('${s.id}','opener')">${s.active ? 'Deactivate' : 'Activate'}</button>
+        <button class="btn btn-sm" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();editScript('${s.id}','opener')">Edit</button>
+        <button class="btn btn-sm" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();deleteScript('${s.id}','opener')">Delete</button>
+      </div>
     </div>
     <div style="color:#eee;font-size:12px;line-height:1.5">${s.text}</div>
     ${s.notes ? `<div style="margin-top:6px;padding:6px;background:#0a0a0a;border:1px solid #222;font-size:10px;color:#666">${s.notes}</div>` : ''}
@@ -1489,7 +1493,11 @@ async function renderFollowupCard(s) {
         ${s.active ? '<span style="color:#0f0;margin-left:8px;font-size:11px">● ACTIVE</span>' : ''}
         ${accountName ? `<span style="color:#999;margin-left:8px;font-size:11px">→ ${accountName}</span>` : ''}
       </div>
-      <button class="btn btn-sm" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();toggleScriptActive('${s.id}','followup')">${s.active ? 'Deactivate' : 'Activate'}</button>
+      <div style="display:flex;gap:5px">
+        <button class="btn btn-sm" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();toggleScriptActive('${s.id}','followup')">${s.active ? 'Deactivate' : 'Activate'}</button>
+        <button class="btn btn-sm" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();editScript('${s.id}','followup')">Edit</button>
+        <button class="btn btn-sm" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();deleteScript('${s.id}','followup')">Delete</button>
+      </div>
     </div>
     <div style="color:#eee;font-size:12px;line-height:1.5">${s.text}</div>
     ${s.notes ? `<div style="margin-top:6px;padding:6px;background:#0a0a0a;border:1px solid #222;font-size:10px;color:#666">${s.notes}</div>` : ''}
@@ -1503,9 +1511,17 @@ async function loadScripts() {
   let html = '';
   scripts.forEach(s => {
     html += `<div class="script-box" onclick="copyToClipboard('${encodeURIComponent(s.text)}')">
-      <div style="margin-bottom:5px"><strong>${s.title || 'Script'}</strong></div>
-      ${s.text}
-      <div style="margin-top:5px;font-size:10px;color:#666">Click to copy</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <strong>${s.title || 'Script'}</strong>
+        <div style="display:flex;gap:5px">
+          <button class="btn btn-sm" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();editScript('${s.id}','script')">Edit</button>
+          <button class="btn btn-sm" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();deleteScript('${s.id}','script')">Delete</button>
+        </div>
+      </div>
+      <div style="color:#eee;font-size:12px;line-height:1.5">${s.text}</div>
+      ${s.category ? `<div style="margin-top:6px;font-size:10px;color:#666">Category: ${s.category}</div>` : ''}
+      ${s.notes ? `<div style="margin-top:6px;padding:6px;background:#0a0a0a;border:1px solid #222;font-size:10px;color:#666">${s.notes}</div>` : ''}
+      <div style="margin-top:8px;font-size:10px;color:#666">Click to copy</div>
     </div>`;
   });
   document.getElementById('scriptList').innerHTML = html || '<div class="empty-state">No scripts</div>';
@@ -1534,6 +1550,37 @@ async function toggleScriptActive(id, type) {
   } catch (e) {
     console.error('toggleScriptActive error:', e);
     toast('Error updating script', 'error');
+  }
+}
+
+async function editScript(id, type) {
+  try {
+    const script = await DB.get('scripts', id);
+    if (!script) {
+      toast('Script not found', 'error');
+      return;
+    }
+    modal('script-edit', { ...script, scriptType: type });
+  } catch (e) {
+    console.error('editScript error:', e);
+    toast('Error loading script', 'error');
+  }
+}
+
+async function deleteScript(id, type) {
+  if (!confirm('Are you sure you want to delete this script?')) return;
+
+  try {
+    await DB.delete('scripts', id);
+    toast('Script deleted', 'success');
+
+    // Reload the appropriate list
+    if (type === 'opener') loadOpeners();
+    else if (type === 'followup') loadFollowups();
+    else loadScripts();
+  } catch (e) {
+    console.error('deleteScript error:', e);
+    toast('Error deleting script', 'error');
   }
 }
 
@@ -2437,6 +2484,68 @@ async function modal(type, data) {
           <textarea class="form-textarea" id="scriptNotes" style="min-height:60px" placeholder="Usage notes, success rate, etc..."></textarea>
         </div>
         <button class="btn btn-primary" onclick="saveScript('${data}')">Save ${data.charAt(0).toUpperCase() + data.slice(1)}</button>
+      `;
+      break;
+
+    case 'script-edit':
+      const scriptType = data.scriptType;
+      title.textContent = `Edit ${scriptType.charAt(0).toUpperCase() + scriptType.slice(1)}`;
+      // Load accounts for assignment
+      const accsEdit = await DB.getAll('accounts', [{ field: 'userId', value: userId }]);
+      let accountOptionsEdit = '<option value="">None (General)</option>';
+      accsEdit.forEach(a => {
+        const selected = a.id === data.accountId ? 'selected' : '';
+        accountOptionsEdit += `<option value="${a.id}" ${selected}>@${a.username} (${a.type})</option>`;
+      });
+
+      body.innerHTML = `
+        <input type="hidden" id="scriptEditId" value="${data.id}">
+        ${scriptType !== 'script' ? `
+        <div class="grid grid-2">
+          <div class="form-group">
+            <label class="form-label">Platform:</label>
+            <select class="form-select" id="scriptPlat">
+              <option value="instagram" ${data.platform === 'instagram' ? 'selected' : ''}>Instagram</option>
+              <option value="twitter" ${data.platform === 'twitter' ? 'selected' : ''}>Twitter</option>
+              <option value="webcam" ${data.platform === 'webcam' ? 'selected' : ''}>Webcam</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Assign to Account:</label>
+            <select class="form-select" id="scriptAccount">
+              ${accountOptionsEdit}
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" style="display:flex;align-items:center;gap:10px">
+            <input type="checkbox" id="scriptActive" style="width:20px;height:20px" ${data.active ? 'checked' : ''}>
+            <span>Mark as Active (currently using)</span>
+          </label>
+        </div>` : `
+        <div class="form-group">
+          <label class="form-label">Title:</label>
+          <input type="text" class="form-input" id="scriptTitle" value="${data.title || ''}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Category:</label>
+          <select class="form-select" id="scriptCategory">
+            <option value="response" ${data.category === 'response' ? 'selected' : ''}>Response</option>
+            <option value="small_talk" ${data.category === 'small_talk' ? 'selected' : ''}>Small Talk</option>
+            <option value="pricing" ${data.category === 'pricing' ? 'selected' : ''}>Pricing</option>
+            <option value="content" ${data.category === 'content' ? 'selected' : ''}>Content Discussion</option>
+            <option value="other" ${data.category === 'other' ? 'selected' : ''}>Other</option>
+          </select>
+        </div>`}
+        <div class="form-group">
+          <label class="form-label">Text:</label>
+          <textarea class="form-textarea" id="scriptTxt" style="min-height:150px" placeholder="Enter the ${scriptType}...">${data.text || ''}</textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Notes (internal):</label>
+          <textarea class="form-textarea" id="scriptNotes" style="min-height:60px" placeholder="Usage notes, success rate, etc...">${data.notes || ''}</textarea>
+        </div>
+        <button class="btn btn-primary" onclick="updateScript('${scriptType}')">Update ${scriptType.charAt(0).toUpperCase() + scriptType.slice(1)}</button>
       `;
       break;
 
@@ -3632,6 +3741,44 @@ async function saveScript(type) {
   closeModal();
   toast(`${type.charAt(0).toUpperCase() + type.slice(1)} added!`, 'success');
   loadOutreach();
+}
+
+async function updateScript(type) {
+  const id = document.getElementById('scriptEditId')?.value;
+  if (!id) {
+    toast('Script ID not found', 'error');
+    return;
+  }
+
+  const text = document.getElementById('scriptTxt')?.value?.trim();
+  if (!text) {
+    toast('Text is required', 'error');
+    return;
+  }
+
+  const data = {
+    text: text,
+    notes: document.getElementById('scriptNotes')?.value?.trim() || ''
+  };
+
+  if (type === 'script') {
+    data.title = document.getElementById('scriptTitle')?.value?.trim() || '';
+    data.category = document.getElementById('scriptCategory')?.value || 'other';
+  } else {
+    // Opener or followup
+    data.platform = document.getElementById('scriptPlat')?.value || '';
+    data.active = document.getElementById('scriptActive')?.checked || false;
+    data.accountId = document.getElementById('scriptAccount')?.value || null;
+  }
+
+  await DB.update('scripts', id, data);
+  closeModal();
+  toast(`${type.charAt(0).toUpperCase() + type.slice(1)} updated!`, 'success');
+
+  // Reload the appropriate list
+  if (type === 'opener') loadOpeners();
+  else if (type === 'followup') loadFollowups();
+  else loadScripts();
 }
 
 async function saveModel() {
