@@ -1892,28 +1892,28 @@ async function loadLeads() {
     const total = leads.length;
     const isExpanded = currentExpandedCollection === coll.id;
 
-    const platformLabel = coll.platform === 'instagram' ? '📷 Instagram' :
-                          coll.platform === 'twitter' ? '🐦 Twitter' : '🎥 Webcams';
+    const platformLabel = coll.platform === 'instagram' ? 'IG' :
+                          coll.platform === 'twitter' ? 'TW' : 'WC';
 
-    html += `<div style="margin-bottom:20px;border:2px solid #333;border-radius:6px;background:#0a0a0a;overflow:hidden">
+    html += `<div style="margin-bottom:15px;border:1px solid #333;background:#0a0a0a">
       <!-- Collection Header -->
-      <div style="padding:15px;background:#0a0a0a;cursor:pointer;border-bottom:${isExpanded ? '1px solid #333' : 'none'}" onclick="toggleCollection('${coll.id}')">
+      <div style="padding:12px;background:#0a0a0a;cursor:pointer;border-bottom:${isExpanded ? '1px solid #0f0' : '1px solid #333'}" onclick="toggleCollection('${coll.id}')">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div style="flex:1">
-            <h3 style="color:#0f0;margin:0 0 8px 0;font-size:16px;display:flex;align-items:center;gap:12px">
-              <span style="font-size:18px;color:#0f0;transition:transform 0.3s;transform:rotate(${isExpanded ? '90' : '0'}deg)">▶</span>
-              ${coll.name}
-              <span style="font-size:11px;background:#333;color:#0f0;padding:5px 12px;border-radius:4px;border:1px solid #0f0">${platformLabel}</span>
-            </h3>
-            <div style="display:flex;gap:20px;font-size:12px;color:#999">
-              <span>📊 Total: <strong style="color:#0f0">${total}</strong></span>
-              <span>✅ Done: <strong style="color:#ff0">${outreached}</strong></span>
-              <span>⏳ Pending: <strong style="color:#f55">${total - outreached}</strong></span>
+            <div style="color:#0f0;margin:0 0 6px 0;font-size:14px;font-family:'Courier New',monospace;display:flex;align-items:center;gap:10px">
+              <span style="color:#0f0">${isExpanded ? '▼' : '►'}</span>
+              <span style="letter-spacing:1px">[${platformLabel}]</span>
+              ${coll.name.toUpperCase()}
+            </div>
+            <div style="display:flex;gap:15px;font-size:11px;color:#666;font-family:'Courier New',monospace">
+              <span>TOTAL:<strong style="color:#0f0;margin-left:5px">${total}</strong></span>
+              <span>DONE:<strong style="color:#ff0;margin-left:5px">${outreached}</strong></span>
+              <span>PEND:<strong style="color:#f55;margin-left:5px">${total - outreached}</strong></span>
             </div>
           </div>
-          <div style="display:flex;gap:8px" onclick="event.stopPropagation()">
-            <button class="btn btn-sm" style="font-size:11px;padding:6px 12px" onclick="editCollection('${coll.id}')">Edit</button>
-            <button class="btn btn-sm" style="font-size:11px;padding:6px 12px;background:#1a0a0a;border:1px solid #f55;color:#f55" onclick="deleteLeadCollection('${coll.id}')">Delete</button>
+          <div style="display:flex;gap:6px" onclick="event.stopPropagation()">
+            <button class="btn btn-sm" style="font-size:10px;padding:4px 10px" onclick="editCollection('${coll.id}')">EDIT</button>
+            <button class="btn btn-sm" style="font-size:10px;padding:4px 10px;background:#000;border:1px solid #f55;color:#f55" onclick="deleteLeadCollection('${coll.id}')">DEL</button>
           </div>
         </div>
       </div>
@@ -1926,36 +1926,37 @@ async function loadLeads() {
           </div>
 
           <!-- Add Lead Form (inline) -->
-          <div id="addLeadForm-${coll.id}" style="display:none;margin-bottom:15px;padding:15px;background:#111;border:2px solid #0f0;border-radius:4px">
+          <div id="addLeadForm-${coll.id}" style="display:none;margin-bottom:15px;padding:12px;background:#000;border:1px solid #0f0">
             <input type="hidden" id="editLeadId-${coll.id}">
-            <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:10px;margin-bottom:10px">
-              <input type="text" class="form-input" id="leadName-${coll.id}" placeholder="Model Name" style="font-size:11px">
-              <input type="text" class="form-input" id="leadUsername-${coll.id}" placeholder="@username" style="font-size:11px">
-              <input type="text" class="form-input" id="leadNotes-${coll.id}" placeholder="Notes (optional)" style="font-size:11px">
+            <div style="margin-bottom:8px;color:#0f0;font-size:11px;font-family:'Courier New',monospace">+ NEW LEAD</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:8px;margin-bottom:8px">
+              <input type="text" class="form-input" id="leadName-${coll.id}" placeholder="NAME" style="font-size:10px;font-family:'Courier New',monospace">
+              <input type="text" class="form-input" id="leadUsername-${coll.id}" placeholder="USERNAME" style="font-size:10px;font-family:'Courier New',monospace">
+              <input type="text" class="form-input" id="leadNotes-${coll.id}" placeholder="NOTES" style="font-size:10px;font-family:'Courier New',monospace">
             </div>
-            <div style="display:flex;gap:8px;align-items:center">
-              <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#ccc;cursor:pointer">
-                <input type="checkbox" id="leadOutreached-${coll.id}" style="width:16px;height:16px">
-                Already Outreached
+            <div style="display:flex;gap:6px;align-items:center">
+              <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:#999;cursor:pointer;font-family:'Courier New',monospace">
+                <input type="checkbox" id="leadOutreached-${coll.id}" style="width:14px;height:14px">
+                OUTREACHED
               </label>
-              <button class="btn btn-primary btn-sm" onclick="saveLeadInline('${coll.id}','${coll.platform}')" style="margin-left:auto">
-                <span id="saveLeadBtn-${coll.id}">Add Lead</span>
+              <button class="btn btn-primary btn-sm" onclick="saveLeadInline('${coll.id}','${coll.platform}')" style="margin-left:auto;font-size:10px;font-family:'Courier New',monospace">
+                <span id="saveLeadBtn-${coll.id}">ADD</span>
               </button>
-              <button class="btn btn-sm" onclick="cancelAddLeadForm('${coll.id}')">Cancel</button>
+              <button class="btn btn-sm" onclick="cancelAddLeadForm('${coll.id}')" style="font-size:10px;font-family:'Courier New',monospace">CANCEL</button>
             </div>
           </div>
 
           <!-- Leads Table -->
           ${leads.length > 0 ? `
-            <div style="background:#000;border:1px solid #333;border-radius:4px;overflow:hidden">
-              <table style="width:100%;border-collapse:collapse">
+            <div style="background:#000;border:1px solid #333">
+              <table style="width:100%;border-collapse:collapse;font-family:'Courier New',monospace">
                 <thead>
-                  <tr style="background:#0a0a0a;border-bottom:2px solid #333">
-                    <th style="padding:10px;text-align:left;font-size:11px;color:#999;font-weight:normal">NAME</th>
-                    <th style="padding:10px;text-align:left;font-size:11px;color:#999;font-weight:normal">${coll.platform.toUpperCase()}</th>
-                    <th style="padding:10px;text-align:left;font-size:11px;color:#999;font-weight:normal">NOTES</th>
-                    <th style="padding:10px;text-align:center;font-size:11px;color:#999;font-weight:normal">STATUS</th>
-                    <th style="padding:10px;text-align:center;font-size:11px;color:#999;font-weight:normal;width:80px">✓</th>
+                  <tr style="background:#0a0a0a;border-bottom:1px solid #0f0">
+                    <th style="padding:8px;text-align:left;font-size:10px;color:#0f0;font-weight:normal;letter-spacing:1px">NAME</th>
+                    <th style="padding:8px;text-align:left;font-size:10px;color:#0f0;font-weight:normal;letter-spacing:1px">${coll.platform.toUpperCase()}</th>
+                    <th style="padding:8px;text-align:left;font-size:10px;color:#0f0;font-weight:normal;letter-spacing:1px">NOTES</th>
+                    <th style="padding:8px;text-align:center;font-size:10px;color:#0f0;font-weight:normal;letter-spacing:1px">STATUS</th>
+                    <th style="padding:8px;text-align:center;font-size:10px;color:#0f0;font-weight:normal;width:60px">[ ]</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1964,24 +1965,24 @@ async function loadLeads() {
                                     coll.platform === 'twitter' ? lead.twitterUsername :
                                     lead.webcamUsername;
                     const rowBg = idx % 2 === 0 ? '#0a0a0a' : '#000';
-                    return `<tr style="background:${rowBg};border-bottom:1px solid #222;transition:background 0.2s" onmouseover="this.style.background='#111'" onmouseout="this.style.background='${rowBg}'">
-                      <td style="padding:12px;font-size:12px;color:#0f0;font-weight:bold">${lead.name}</td>
-                      <td style="padding:12px;font-size:11px;color:#ccc">${username || '-'}</td>
-                      <td style="padding:12px;font-size:10px;color:#666">${lead.notes || '-'}</td>
-                      <td style="padding:12px;text-align:center">
-                        <span style="font-size:11px;padding:4px 10px;border-radius:3px;background:${lead.outreached ? '#001a00' : '#1a0a0a'};color:${lead.outreached ? '#0f0' : '#f55'};border:1px solid ${lead.outreached ? '#0f0' : '#f55'};font-weight:bold">
+                    return `<tr style="background:${rowBg};border-bottom:1px solid #222" onmouseover="this.style.background='#111'" onmouseout="this.style.background='${rowBg}'">
+                      <td style="padding:10px 8px;font-size:11px;color:#0f0">${lead.name}</td>
+                      <td style="padding:10px 8px;font-size:10px;color:#ccc">${username || '-'}</td>
+                      <td style="padding:10px 8px;font-size:10px;color:#666">${lead.notes || '-'}</td>
+                      <td style="padding:10px 8px;text-align:center">
+                        <span style="font-size:10px;padding:2px 8px;background:${lead.outreached ? '#001a00' : '#1a0a0a'};color:${lead.outreached ? '#0f0' : '#f55'};border:1px solid ${lead.outreached ? '#0f0' : '#f55'};font-weight:bold;letter-spacing:1px">
                           ${lead.outreached ? 'YES' : 'NO'}
                         </span>
                       </td>
-                      <td style="padding:12px;text-align:center">
-                        <input type="checkbox" ${lead.outreached ? 'checked' : ''} onchange="toggleLeadOutreach('${lead.id}','${coll.id}',this.checked)" style="width:20px;height:20px;cursor:pointer;accent-color:#0f0">
+                      <td style="padding:10px 8px;text-align:center">
+                        <input type="checkbox" ${lead.outreached ? 'checked' : ''} onchange="toggleLeadOutreach('${lead.id}','${coll.id}',this.checked)" style="width:18px;height:18px;cursor:pointer;accent-color:#0f0">
                       </td>
                     </tr>`;
                   }).join('')}
                 </tbody>
               </table>
             </div>
-          ` : '<div class="empty-state" style="padding:30px">No leads yet. Click "Add Lead" to start!</div>'}
+          ` : '<div class="empty-state" style="padding:20px;font-family:\'Courier New\',monospace;color:#666">NO LEADS. PRESS ADD LEAD.</div>'}
         </div>
       </div>
     </div>`;
