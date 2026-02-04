@@ -1386,18 +1386,49 @@ async function loadOpeners() {
   let scripts = await DB.getScripts('opener');
   if (filter) scripts = scripts.filter(s => s.platform === filter);
 
+  // Separate active and inactive
+  const active = scripts.filter(s => s.active);
+  const inactive = scripts.filter(s => !s.active);
+
   let html = '';
-  scripts.forEach(s => {
-    html += `<div class="script-box ${s.active ? 'selected' : ''}" onclick="copyToClipboard('${encodeURIComponent(s.text)}')">
-      <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+
+  if (active.length > 0) {
+    html += '<div style="margin-bottom:15px"><strong style="color:#0f0">● Active Openers</strong></div>';
+    for (const s of active) {
+      html += await renderOpenerCard(s);
+    }
+  }
+
+  if (inactive.length > 0) {
+    html += '<div style="margin:20px 0 15px"><strong style="color:#666">Inactive Openers</strong></div>';
+    for (const s of inactive) {
+      html += await renderOpenerCard(s);
+    }
+  }
+
+  document.getElementById('openerList').innerHTML = html || '<div class="empty-state">No openers yet. Add one!</div>';
+}
+
+async function renderOpenerCard(s) {
+  let accountName = '';
+  if (s.accountId) {
+    const acc = await DB.get('accounts', s.accountId);
+    if (acc) accountName = `@${acc.username}`;
+  }
+
+  return `<div class="script-box ${s.active ? 'selected' : ''}" onclick="copyToClipboard('${encodeURIComponent(s.text)}')">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div>
         <span class="status status-${s.platform === 'instagram' ? 'healthy' : s.platform === 'twitter' ? 'pending' : 'live'}">${s.platform}</span>
-        <span>${s.active ? '(Active)' : ''}</span>
+        ${s.active ? '<span style="color:#0f0;margin-left:8px;font-size:11px">● ACTIVE</span>' : ''}
+        ${accountName ? `<span style="color:#999;margin-left:8px;font-size:11px">→ ${accountName}</span>` : ''}
       </div>
-      ${s.text}
-      <div style="margin-top:5px;font-size:10px;color:#666">Click to copy</div>
-    </div>`;
-  });
-  document.getElementById('openerList').innerHTML = html || '<div class="empty-state">No openers</div>';
+      <button class="btn btn-sm" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();toggleScriptActive('${s.id}','opener')">${s.active ? 'Deactivate' : 'Activate'}</button>
+    </div>
+    <div style="color:#eee;font-size:12px;line-height:1.5">${s.text}</div>
+    ${s.notes ? `<div style="margin-top:6px;padding:6px;background:#0a0a0a;border:1px solid #222;font-size:10px;color:#666">${s.notes}</div>` : ''}
+    <div style="margin-top:8px;font-size:10px;color:#666">Click to copy</div>
+  </div>`;
 }
 
 async function loadFollowups() {
@@ -1405,18 +1436,49 @@ async function loadFollowups() {
   let scripts = await DB.getScripts('followup');
   if (filter) scripts = scripts.filter(s => s.platform === filter);
 
+  // Separate active and inactive
+  const active = scripts.filter(s => s.active);
+  const inactive = scripts.filter(s => !s.active);
+
   let html = '';
-  scripts.forEach(s => {
-    html += `<div class="script-box ${s.active ? 'selected' : ''}" onclick="copyToClipboard('${encodeURIComponent(s.text)}')">
-      <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+
+  if (active.length > 0) {
+    html += '<div style="margin-bottom:15px"><strong style="color:#0f0">● Active Follow-ups</strong></div>';
+    for (const s of active) {
+      html += await renderFollowupCard(s);
+    }
+  }
+
+  if (inactive.length > 0) {
+    html += '<div style="margin:20px 0 15px"><strong style="color:#666">Inactive Follow-ups</strong></div>';
+    for (const s of inactive) {
+      html += await renderFollowupCard(s);
+    }
+  }
+
+  document.getElementById('followupList').innerHTML = html || '<div class="empty-state">No follow-ups yet. Add one!</div>';
+}
+
+async function renderFollowupCard(s) {
+  let accountName = '';
+  if (s.accountId) {
+    const acc = await DB.get('accounts', s.accountId);
+    if (acc) accountName = `@${acc.username}`;
+  }
+
+  return `<div class="script-box ${s.active ? 'selected' : ''}" onclick="copyToClipboard('${encodeURIComponent(s.text)}')">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div>
         <span class="status status-${s.platform === 'instagram' ? 'healthy' : s.platform === 'twitter' ? 'pending' : 'live'}">${s.platform}</span>
-        <span>${s.active ? '(Active)' : ''}</span>
+        ${s.active ? '<span style="color:#0f0;margin-left:8px;font-size:11px">● ACTIVE</span>' : ''}
+        ${accountName ? `<span style="color:#999;margin-left:8px;font-size:11px">→ ${accountName}</span>` : ''}
       </div>
-      ${s.text}
-      <div style="margin-top:5px;font-size:10px;color:#666">Click to copy</div>
-    </div>`;
-  });
-  document.getElementById('followupList').innerHTML = html || '<div class="empty-state">No follow-ups</div>';
+      <button class="btn btn-sm" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation();toggleScriptActive('${s.id}','followup')">${s.active ? 'Deactivate' : 'Activate'}</button>
+    </div>
+    <div style="color:#eee;font-size:12px;line-height:1.5">${s.text}</div>
+    ${s.notes ? `<div style="margin-top:6px;padding:6px;background:#0a0a0a;border:1px solid #222;font-size:10px;color:#666">${s.notes}</div>` : ''}
+    <div style="margin-top:8px;font-size:10px;color:#666">Click to copy</div>
+  </div>`;
 }
 
 async function loadScripts() {
@@ -1436,6 +1498,27 @@ async function loadScripts() {
 function copyToClipboard(text) {
   navigator.clipboard.writeText(decodeURIComponent(text));
   toast('Copied to clipboard!', 'success');
+}
+
+async function toggleScriptActive(id, type) {
+  try {
+    const script = await DB.get('scripts', id);
+    if (!script) {
+      toast('Script not found', 'error');
+      return;
+    }
+
+    await DB.update('scripts', id, { active: !script.active });
+    toast(script.active ? 'Deactivated' : 'Activated!', 'success');
+
+    // Reload the appropriate list
+    if (type === 'opener') loadOpeners();
+    else if (type === 'followup') loadFollowups();
+    else loadScripts();
+  } catch (e) {
+    console.error('toggleScriptActive error:', e);
+    toast('Error updating script', 'error');
+  }
 }
 
 function renderAccounts(accs) {
@@ -2284,25 +2367,60 @@ function modal(type, data) {
 
     case 'script':
       title.textContent = `Add ${data.charAt(0).toUpperCase() + data.slice(1)}`;
+      // Load accounts for assignment
+      const accs = await DB.getAll('accounts', [{ field: 'userId', value: userId }]);
+      let accountOptions = '<option value="">None (General)</option>';
+      accs.forEach(a => {
+        accountOptions += `<option value="${a.id}">@${a.username} (${a.type})</option>`;
+      });
+
       body.innerHTML = `
         ${data !== 'script' ? `
+        <div class="grid grid-2">
+          <div class="form-group">
+            <label class="form-label">Platform:</label>
+            <select class="form-select" id="scriptPlat">
+              <option value="instagram">Instagram</option>
+              <option value="twitter">Twitter</option>
+              <option value="webcam">Webcam</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Assign to Account:</label>
+            <select class="form-select" id="scriptAccount">
+              ${accountOptions}
+            </select>
+          </div>
+        </div>
         <div class="form-group">
-          <label class="form-label">Platform:</label>
-          <select class="form-select" id="scriptPlat">
-            <option value="instagram">Instagram</option>
-            <option value="twitter">Twitter</option>
-            <option value="webcam">Webcam</option>
-          </select>
+          <label class="form-label" style="display:flex;align-items:center;gap:10px">
+            <input type="checkbox" id="scriptActive" style="width:20px;height:20px">
+            <span>Mark as Active (currently using)</span>
+          </label>
         </div>` : `
         <div class="form-group">
           <label class="form-label">Title:</label>
           <input type="text" class="form-input" id="scriptTitle">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Category:</label>
+          <select class="form-select" id="scriptCategory">
+            <option value="response">Response</option>
+            <option value="small_talk">Small Talk</option>
+            <option value="pricing">Pricing</option>
+            <option value="content">Content Discussion</option>
+            <option value="other">Other</option>
+          </select>
         </div>`}
         <div class="form-group">
           <label class="form-label">Text:</label>
-          <textarea class="form-textarea" id="scriptTxt" style="min-height:150px"></textarea>
+          <textarea class="form-textarea" id="scriptTxt" style="min-height:150px" placeholder="Enter the ${data}..."></textarea>
         </div>
-        <button class="btn btn-primary" onclick="saveScript('${data}')">Save</button>
+        <div class="form-group">
+          <label class="form-label">Notes (internal):</label>
+          <textarea class="form-textarea" id="scriptNotes" style="min-height:60px" placeholder="Usage notes, success rate, etc..."></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="saveScript('${data}')">Save ${data.charAt(0).toUpperCase() + data.slice(1)}</button>
       `;
       break;
 
@@ -3319,17 +3437,32 @@ async function saveOutseeker() {
 }
 
 async function saveScript(type) {
+  const text = document.getElementById('scriptTxt')?.value?.trim();
+  if (!text) {
+    toast('Text is required', 'error');
+    return;
+  }
+
   const data = {
     type,
-    text: document.getElementById('scriptTxt').value
+    text: text,
+    notes: document.getElementById('scriptNotes')?.value?.trim() || '',
+    usageCount: 0
   };
+
   if (type === 'script') {
-    data.title = document.getElementById('scriptTitle')?.value || '';
+    data.title = document.getElementById('scriptTitle')?.value?.trim() || '';
+    data.category = document.getElementById('scriptCategory')?.value || 'other';
   } else {
+    // Opener or followup
     data.platform = document.getElementById('scriptPlat')?.value || '';
+    data.active = document.getElementById('scriptActive')?.checked || false;
+    data.accountId = document.getElementById('scriptAccount')?.value || null;
   }
+
   await DB.add('scripts', data);
   closeModal();
+  toast(`${type.charAt(0).toUpperCase() + type.slice(1)} added!`, 'success');
   loadOutreach();
 }
 
