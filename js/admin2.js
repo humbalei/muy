@@ -1419,25 +1419,25 @@ async function loadOutseeker() {
           <div style="font-weight:${isToday ? 'bold' : 'normal'};color:${isToday ? '#0f0' : '#eee'};font-size:13px;margin-bottom:2px">${l.date}</div>
           ${isToday ? '<div style="font-size:9px;color:#0f0">TODAY</div>' : ''}
         </div>
-        <div style="flex:1;display:flex;gap:8px;align-items:center;font-size:11px">
+        <div style="flex:1;display:flex;gap:8px;align-items:center;font-size:11px;flex-wrap:wrap">
           <div style="padding:4px 8px;background:#0a0a0a;border:1px solid #333;border-radius:2px">
-            <span style="color:#666">Running:</span> <strong style="color:#0f0">${l.activeAccounts || 0}</strong>
+            <span style="color:#666">Accounts Running:</span> <strong style="color:#0f0">${l.activeAccounts || 0}</strong>
           </div>
           <div style="padding:4px 8px;background:#0a0a0a;border:1px solid #333;border-radius:2px">
-            <span style="color:#666">USA:</span> <strong style="color:#4af">${l.usaRunning || 0}</strong>
+            <span style="color:#666">USA Running:</span> <strong style="color:#4af">${l.usaRunning || 0}</strong>
           </div>
           <div style="padding:4px 8px;background:#0a0a0a;border:1px solid #333;border-radius:2px">
-            <span style="color:#666">ESP:</span> <strong style="color:#f4a">${l.espRunning || 0}</strong>
+            <span style="color:#666">ESP Running:</span> <strong style="color:#f4a">${l.espRunning || 0}</strong>
           </div>
           <div style="width:1px;height:20px;background:#333"></div>
           <div style="padding:4px 8px;background:#0a0a0a;border:1px solid #333;border-radius:2px">
-            <span style="color:#666">Out USA:</span> <strong style="color:#4af">${usaOut}</strong>
+            <span style="color:#666">Outreached USA:</span> <strong style="color:#4af">${usaOut}</strong>
           </div>
           <div style="padding:4px 8px;background:#0a0a0a;border:1px solid #333;border-radius:2px">
-            <span style="color:#666">Out ESP:</span> <strong style="color:#f4a">${espOut}</strong>
+            <span style="color:#666">Outreached ESP:</span> <strong style="color:#f4a">${espOut}</strong>
           </div>
           <div style="padding:4px 8px;background:#0a0a0a;border:1px solid #333;border-radius:2px">
-            <span style="color:#666">Total:</span> <strong style="color:#ff0">${totalOut}</strong>
+            <span style="color:#666">Total Outreached:</span> <strong style="color:#ff0">${totalOut}</strong>
           </div>
         </div>
         <div style="flex:0 0 auto;display:flex;gap:5px">
