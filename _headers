@@ -19,8 +19,8 @@
   # Strict-Transport-Security - Force HTTPS
   Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
 
-  # Content-Security-Policy - Prevent XSS and injection attacks
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://cdn.jsdelivr.net https://openrouter.ai; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://*.firebaseio.com https://*.googleapis.com https://openrouter.ai https://api.telegram.org https://api.elevenlabs.io wss://*.firebaseio.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'
+  # Content-Security-Policy - Prevent XSS and injection attacks (relaxed for Firebase/CDN)
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://cdn.jsdelivr.net https://openrouter.ai; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://*.firebaseio.com https://*.googleapis.com https://www.gstatic.com https://cdn.jsdelivr.net https://openrouter.ai https://api.telegram.org https://api.elevenlabs.io wss://*.firebaseio.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'
 
 /sw.js
   # Service Worker - allow evaluation for dynamic caching
