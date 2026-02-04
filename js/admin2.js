@@ -1940,6 +1940,24 @@ function toggleActiveFields() {
   if (activePerf) activePerf.style.display = isActive ? 'block' : 'none';
 }
 
+function toggleCommLogs(modelId) {
+  const recent = document.getElementById(`commLogs-${modelId}-recent`);
+  const all = document.getElementById(`commLogs-${modelId}-all`);
+  const toggleBtn = event.target;
+
+  if (all.style.display === 'none') {
+    // Show all logs
+    recent.style.display = 'none';
+    all.style.display = 'block';
+    toggleBtn.textContent = 'Show Less ▲';
+  } else {
+    // Show recent only
+    recent.style.display = 'block';
+    all.style.display = 'none';
+    toggleBtn.textContent = 'Show All ▼';
+  }
+}
+
 async function viewCommHistory(modelId) {
   const model = await DB.get('models', modelId);
   if (!model) {
@@ -2085,19 +2103,43 @@ function renderModels(models) {
           ${trendIndicator ? `<div style="margin-top:4px">${trendIndicator}</div>` : ''}
         </div>
 
-        ${isActive && recentNotes.length > 0 ? `
+        ${commNotes.length > 0 ? `
         <div style="margin:8px 0;padding:8px;background:#0a0a0a;border:1px solid #222;border-radius:3px">
-          <div style="font-size:10px;color:#666;margin-bottom:5px">Recent Activity:</div>
-          ${recentNotes.map(note => {
-            const noteDate = new Date(note.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-            const progressIcon = note.progress === 'positive' ? '✅' : (note.progress === 'negative' ? '❌' : '➖');
-            const noteText = note.note.length > 50 ? note.note.substring(0, 50) + '...' : note.note;
-            return `<div style="font-size:9px;color:#999;margin:3px 0;display:flex;gap:5px">
-              <span>${progressIcon}</span>
-              <span style="color:#666">${noteDate}:</span>
-              <span>${noteText || 'No note'}</span>
-            </div>`;
-          }).join('')}
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+            <span style="font-size:10px;color:#666">Communication Logs (${commNotes.length}):</span>
+            ${commNotes.length > 3 ? `<span style="font-size:9px;color:#0f0;cursor:pointer" onclick="toggleCommLogs('${m.id}')">Show All ▼</span>` : ''}
+          </div>
+
+          <div id="commLogs-${m.id}-recent">
+            ${recentNotes.map(note => {
+              const noteDate = new Date(note.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+              const progressIcon = note.progress === 'positive' ? '✅' : (note.progress === 'negative' ? '❌' : '➖');
+              const noteText = note.note.length > 50 ? note.note.substring(0, 50) + '...' : note.note;
+              return `<div style="font-size:9px;color:#999;margin:3px 0;display:flex;gap:5px">
+                <span>${progressIcon}</span>
+                <span style="color:#666">${noteDate}:</span>
+                <span>${noteText || 'No note'}</span>
+              </div>`;
+            }).join('')}
+          </div>
+
+          <div id="commLogs-${m.id}-all" style="display:none;max-height:300px;overflow-y:auto">
+            ${[...commNotes].reverse().map(note => {
+              const noteDate = new Date(note.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+              const progressIcon = note.progress === 'positive' ? '✅' : (note.progress === 'negative' ? '❌' : '➖');
+              const progressColor = note.progress === 'positive' ? '#0f0' : (note.progress === 'negative' ? '#f00' : '#ff0');
+              return `<div style="margin:6px 0;padding:6px;background:#111;border-left:2px solid ${progressColor};border-radius:2px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+                  <span style="font-size:9px;color:#666">${noteDate}</span>
+                  <span style="font-size:10px">${progressIcon}</span>
+                </div>
+                <div style="font-size:9px;color:#ccc;line-height:1.4">${note.note || 'No note'}</div>
+                ${note.contentUpdate ? `<div style="margin-top:4px;padding:4px;background:#0a0a0a;border-radius:2px">
+                  <div style="font-size:8px;color:#0f0">Content: ${note.contentUpdate}</div>
+                </div>` : ''}
+              </div>`;
+            }).join('')}
+          </div>
         </div>
         ` : ''}
 
