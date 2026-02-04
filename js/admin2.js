@@ -51,6 +51,7 @@ function loadSection(s) {
     case 'daily': loadDaily(); break;
     case 'ai': loadAI(); break;
     case 'outreach': loadOutreach(); break;
+    case 'leads': loadLeads(); break;
     case 'models': loadModels(); break;
     case 'content': loadContent(); break;
     case 'posting': loadPosting(); break;
@@ -1877,6 +1878,135 @@ async function delScript(id) {
 }
 
 // ============================================
+// LEADS
+// ============================================
+async function loadLeads() {
+  const collections = await DB.getAll('lead_collections', [{ field: 'userId', value: userId }]);
+
+  let html = '';
+  for (const coll of collections) {
+    const leads = await DB.getAll('leads', [{ field: 'collectionId', value: coll.id }]);
+    const outreached = leads.filter(l => l.outreached).length;
+    const total = leads.length;
+
+    // Get account names
+    let accountNames = [];
+    if (coll.accountIds && coll.accountIds.length > 0) {
+      const accounts = await DB.getAll('accounts', [{ field: 'userId', value: userId }]);
+      accountNames = accounts.filter(a => coll.accountIds.includes(a.id)).map(a => `@${a.username}`);
+    }
+
+    const platformBadge = coll.platform === 'instagram' ? '📷 Instagram' :
+                          coll.platform === 'twitter' ? '🐦 Twitter' :
+                          '🎥 Webcams';
+
+    html += `<div class="box" style="cursor:pointer" onclick="viewLeadCollection('${coll.id}')">
+      <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:10px">
+        <h3 style="color:#0f0;margin:0;font-size:14px">${coll.name}</h3>
+        <span style="font-size:10px;background:#333;padding:3px 8px;border-radius:3px">${platformBadge}</span>
+      </div>
+      <div style="font-size:11px;color:#999;margin-bottom:8px">
+        <div><strong>Leads:</strong> ${total} (${outreached} outreached)</div>
+        ${accountNames.length > 0 ? `<div><strong>Accounts:</strong> ${accountNames.join(', ')}</div>` : '<div style="color:#666">No accounts assigned</div>'}
+      </div>
+      <div style="display:flex;gap:5px;margin-top:10px" onclick="event.stopPropagation()">
+        <button class="btn btn-sm" style="flex:1;font-size:10px" onclick="modal('leadCollection',${JSON.stringify(coll).replace(/"/g, '&quot;')})">Edit</button>
+        <button class="btn btn-sm" style="flex:1;font-size:10px" onclick="deleteLeadCollection('${coll.id}')">Delete</button>
+      </div>
+    </div>`;
+  }
+
+  document.getElementById('leadsCollectionList').innerHTML = html || '<div class="empty-state">No lead collections yet. Create one to start!</div>';
+}
+
+async function viewLeadCollection(collId) {
+  const coll = await DB.get('lead_collections', collId);
+  if (!coll) {
+    toast('Collection not found', 'error');
+    return;
+  }
+
+  const leads = await DB.getAll('leads', [{ field: 'collectionId', value: collId }]);
+
+  const m = document.getElementById('modal');
+  const title = document.getElementById('mTitle');
+  const body = document.getElementById('mBody');
+
+  title.textContent = `${coll.name} - Leads`;
+  document.getElementById('mBox').className = 'modal-box large';
+
+  const platformBadge = coll.platform === 'instagram' ? '📷 Instagram' :
+                        coll.platform === 'twitter' ? '🐦 Twitter' :
+                        '🎥 Webcams';
+
+  let leadsHtml = '';
+  leads.forEach(lead => {
+    leadsHtml += `<div style="padding:10px;background:#0a0a0a;border:1px solid #333;border-radius:3px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:start">
+        <div style="flex:1">
+          <div style="font-size:12px;color:#0f0;font-weight:bold">${lead.name}</div>
+          <div style="font-size:11px;color:#999;margin-top:3px">
+            ${coll.platform === 'instagram' && lead.igUsername ? `<div>IG: @${lead.igUsername}</div>` : ''}
+            ${coll.platform === 'twitter' && lead.twitterUsername ? `<div>TW: @${lead.twitterUsername}</div>` : ''}
+            ${coll.platform === 'webcams' && lead.webcamUsername ? `<div>Webcam: ${lead.webcamUsername}</div>` : ''}
+            ${lead.notes ? `<div style="margin-top:5px;color:#666;font-size:10px">${lead.notes}</div>` : ''}
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:10px;padding:3px 8px;border-radius:3px;background:${lead.outreached ? '#001a00' : '#1a0a0a'};color:${lead.outreached ? '#0f0' : '#f55'};border:1px solid ${lead.outreached ? '#0f0' : '#f55'}">
+            ${lead.outreached ? '✅ Outreached' : '⏳ Pending'}
+          </span>
+          <button class="btn btn-sm" style="font-size:9px;padding:3px 8px" onclick="modal('leadItem',${JSON.stringify({...lead, collectionId: collId, platform: coll.platform}).replace(/"/g, '&quot;')})">Edit</button>
+          <button class="btn btn-sm" style="font-size:9px;padding:3px 8px" onclick="deleteLead('${lead.id}','${collId}')">✕</button>
+        </div>
+      </div>
+    </div>`;
+  });
+
+  body.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;padding:12px;background:#0a0a0a;border:1px solid #333;border-radius:4px">
+      <div>
+        <span style="font-size:12px;font-weight:bold;color:#0f0">${platformBadge}</span>
+        <div style="font-size:10px;color:#999;margin-top:3px">${leads.length} leads (${leads.filter(l => l.outreached).length} outreached)</div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="modal('leadItem',{collectionId:'${collId}',platform:'${coll.platform}'})">Add Lead</button>
+    </div>
+
+    <div style="max-height:500px;overflow-y:auto">
+      ${leadsHtml || '<div class="empty-state">No leads in this collection yet</div>'}
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="btn" onclick="closeModal();loadLeads()">Close</button>
+    </div>
+  `;
+
+  m.classList.add('active');
+}
+
+async function deleteLeadCollection(collId) {
+  if (!confirm('Delete this collection and all its leads?')) return;
+
+  // Delete all leads in collection
+  const leads = await DB.getAll('leads', [{ field: 'collectionId', value: collId }]);
+  for (const lead of leads) {
+    await DB.delete('leads', lead.id);
+  }
+
+  // Delete collection
+  await DB.delete('lead_collections', collId);
+  toast('Collection deleted', 'success');
+  loadLeads();
+}
+
+async function deleteLead(leadId, collId) {
+  if (!confirm('Delete this lead?')) return;
+  await DB.delete('leads', leadId);
+  toast('Lead deleted', 'success');
+  viewLeadCollection(collId);
+}
+
+// ============================================
 // MODELS
 // ============================================
 async function loadModels() {
@@ -3414,6 +3544,103 @@ async function modal(type, data) {
       `;
       break;
 
+    case 'leadCollection':
+      const isEditColl = data && data.id;
+      title.textContent = isEditColl ? `Edit ${data.name}` : 'Create Lead Collection';
+      document.getElementById('mBox').className = 'modal-box';
+      body.innerHTML = `
+        ${isEditColl ? `<input type="hidden" id="collEditId" value="${data.id}">` : ''}
+
+        <div class="form-group">
+          <label class="form-label">Collection Name:</label>
+          <input type="text" class="form-input" id="collName" value="${isEditColl ? data.name || '' : ''}" placeholder="e.g., USA Models Instagram">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Platform:</label>
+          <select class="form-select" id="collPlatform">
+            <option value="instagram" ${isEditColl && data.platform === 'instagram' ? 'selected' : ''}>📷 Instagram</option>
+            <option value="twitter" ${isEditColl && data.platform === 'twitter' ? 'selected' : ''}>🐦 Twitter</option>
+            <option value="webcams" ${isEditColl && data.platform === 'webcams' ? 'selected' : ''}>🎥 Webcams</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Assign to Accounts (optional):</label>
+          <div id="collAccountsWrap" style="max-height:200px;overflow-y:auto;border:1px solid #333;padding:10px;border-radius:3px;background:#0a0a0a"></div>
+        </div>
+
+        <button class="btn btn-primary" onclick="saveLeadCollection()">${isEditColl ? 'Update' : 'Create'} Collection</button>
+      `;
+
+      // Load accounts for assignment
+      DB.getAll('accounts', [{ field: 'userId', value: userId }]).then(accounts => {
+        const wrap = document.getElementById('collAccountsWrap');
+        if (accounts.length === 0) {
+          wrap.innerHTML = '<div style="color:#666;font-size:11px">No accounts available</div>';
+          return;
+        }
+        let html = '';
+        accounts.forEach(acc => {
+          const checked = isEditColl && data.accountIds && data.accountIds.includes(acc.id);
+          html += `<label style="display:flex;align-items:center;gap:8px;margin:5px 0;cursor:pointer">
+            <input type="checkbox" class="collAccCheck" value="${acc.id}" ${checked ? 'checked' : ''} style="width:16px;height:16px">
+            <span style="font-size:11px">@${acc.username} (${acc.type})</span>
+          </label>`;
+        });
+        wrap.innerHTML = html;
+      });
+      break;
+
+    case 'leadItem':
+      const isEditLead = data && data.id;
+      const platform = data.platform || 'instagram';
+      title.textContent = isEditLead ? `Edit Lead` : 'Add Lead';
+      document.getElementById('mBox').className = 'modal-box';
+      body.innerHTML = `
+        ${isEditLead ? `<input type="hidden" id="leadEditId" value="${data.id}">` : ''}
+        <input type="hidden" id="leadCollId" value="${data.collectionId}">
+        <input type="hidden" id="leadPlatform" value="${platform}">
+
+        <div class="form-group">
+          <label class="form-label">Model Name:</label>
+          <input type="text" class="form-input" id="leadName" value="${isEditLead ? data.name || '' : ''}" placeholder="Full name">
+        </div>
+
+        ${platform === 'instagram' ? `
+        <div class="form-group">
+          <label class="form-label">Instagram Username:</label>
+          <input type="text" class="form-input" id="leadIgUser" value="${isEditLead ? data.igUsername || '' : ''}" placeholder="@username">
+        </div>` : ''}
+
+        ${platform === 'twitter' ? `
+        <div class="form-group">
+          <label class="form-label">Twitter Username:</label>
+          <input type="text" class="form-input" id="leadTwUser" value="${isEditLead ? data.twitterUsername || '' : ''}" placeholder="@username">
+        </div>` : ''}
+
+        ${platform === 'webcams' ? `
+        <div class="form-group">
+          <label class="form-label">Webcam Username:</label>
+          <input type="text" class="form-input" id="leadWcUser" value="${isEditLead ? data.webcamUsername || '' : ''}" placeholder="username">
+        </div>` : ''}
+
+        <div class="form-group">
+          <label class="form-label">Notes (optional):</label>
+          <textarea class="form-textarea" id="leadNotes" style="min-height:80px" placeholder="Any additional info...">${isEditLead ? data.notes || '' : ''}</textarea>
+        </div>
+
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+            <input type="checkbox" id="leadOutreached" style="width:20px;height:20px" ${isEditLead && data.outreached ? 'checked' : ''}>
+            <span>Already Outreached</span>
+          </label>
+        </div>
+
+        <button class="btn btn-primary" onclick="saveLeadItem()">${isEditLead ? 'Update' : 'Add'} Lead</button>
+      `;
+      break;
+
     case 'model':
       const isEditModel = data && data.id;
       title.textContent = isEditModel ? `Edit ${data.name}` : 'Add New Model';
@@ -4645,6 +4872,75 @@ async function updateScript(type) {
   if (type === 'opener') loadOpeners();
   else if (type === 'followup') loadFollowups();
   else loadScripts();
+}
+
+async function saveLeadCollection() {
+  const editId = document.getElementById('collEditId')?.value;
+  const name = document.getElementById('collName')?.value?.trim();
+  const platform = document.getElementById('collPlatform')?.value;
+
+  if (!name) {
+    toast('Collection name is required', 'error');
+    return;
+  }
+
+  const accountIds = Array.from(document.querySelectorAll('.collAccCheck:checked')).map(cb => cb.value);
+
+  const data = {
+    userId: userId,
+    name: name,
+    platform: platform,
+    accountIds: accountIds,
+    createdAt: editId ? undefined : new Date().toISOString()
+  };
+
+  if (editId) {
+    await DB.update('lead_collections', editId, data);
+    toast('Collection updated!', 'success');
+  } else {
+    await DB.add('lead_collections', data);
+    toast('Collection created!', 'success');
+  }
+
+  closeModal();
+  loadLeads();
+}
+
+async function saveLeadItem() {
+  const editId = document.getElementById('leadEditId')?.value;
+  const collId = document.getElementById('leadCollId')?.value;
+  const platform = document.getElementById('leadPlatform')?.value;
+  const name = document.getElementById('leadName')?.value?.trim();
+  const notes = document.getElementById('leadNotes')?.value?.trim();
+  const outreached = document.getElementById('leadOutreached')?.checked;
+
+  if (!name) {
+    toast('Model name is required', 'error');
+    return;
+  }
+
+  const data = {
+    userId: userId,
+    collectionId: collId,
+    name: name,
+    igUsername: document.getElementById('leadIgUser')?.value?.trim() || '',
+    twitterUsername: document.getElementById('leadTwUser')?.value?.trim() || '',
+    webcamUsername: document.getElementById('leadWcUser')?.value?.trim() || '',
+    notes: notes,
+    outreached: outreached,
+    addedDate: editId ? undefined : new Date().toISOString()
+  };
+
+  if (editId) {
+    await DB.update('leads', editId, data);
+    toast('Lead updated!', 'success');
+  } else {
+    await DB.add('leads', data);
+    toast('Lead added!', 'success');
+  }
+
+  closeModal();
+  viewLeadCollection(collId);
 }
 
 async function saveModel() {
