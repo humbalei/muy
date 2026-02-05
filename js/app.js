@@ -102,9 +102,13 @@ function logout() {
 }
 
 function loadSection(s) {
+  console.log(`📍 Loading section: ${s}`);
   switch(s) {
     case 'daily': loadDaily(); break;
-    case 'ai': loadAI(); break;
+    case 'ai':
+      console.log('🔄 Force reloading AI chat...');
+      loadAI();
+      break;
     case 'outreach': loadOutreach(); break;
     case 'models': loadModels(); break;
     case 'content': loadContent(); break;
@@ -818,32 +822,133 @@ function selectDate(date) {
 // ============================================
 let chatMessages = [];
 let aiContextCache = null;
+let chatUnsubscribe = null; // For real-time listener cleanup
 
 async function loadAI() {
-  // Load chat history
-  const chatHistory = await DB.getAll('ai_chat_history', [
-    { field: 'userId', value: user.id },
-    { field: 'date', value: curDate }
-  ]);
+  console.log('🔄 Loading AI Chat for user:', user.id);
 
-  chatMessages = chatHistory.sort((a, b) => a.timestamp - b.timestamp);
+  // Clean up previous listener if exists
+  if (chatUnsubscribe) {
+    console.log('🧹 Cleaning up previous listener');
+    chatUnsubscribe();
+    chatUnsubscribe = null;
+  }
 
-  // Display messages
+  try {
+    // Load initial chat history - ALL messages for user, not just today
+    // Order by timestamp ascending, limit to last 200 messages to prevent overload
+    console.log('📡 Fetching chat history from Firestore...');
+    const chatHistory = await DB.getAll('ai_chat_history', [
+      { field: 'userId', value: user.id }
+    ], 'timestamp', 'asc', 200);
+
+    console.log(`✅ Loaded ${chatHistory.length} messages from history`);
+    chatMessages = chatHistory;
+    displayChatMessages();
+
+    // Setup real-time listener for new messages across all devices
+    console.log('👂 Setting up real-time listener...');
+    chatUnsubscribe = DB.db.collection('ai_chat_history')
+      .where('userId', '==', user.id)
+      .orderBy('timestamp', 'asc')
+      .limitToLast(200)
+      .onSnapshot(snapshot => {
+        console.log(`🔔 Real-time update: ${snapshot.docs.length} messages`);
+        // Update chat messages with real-time data
+        chatMessages = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        displayChatMessages();
+      }, error => {
+        console.error('❌ Real-time listener error:', error);
+      });
+
+    console.log('✅ Real-time listener active');
+
+  } catch (error) {
+    console.error('❌ Error loading AI chat:', error);
+    chatMessages = [];
+    displayChatMessages();
+  }
+
+  // Load KB list
+  loadKnowledgeBase();
+}
+
+// Force reload chat messages
+async function reloadAIChat() {
+  console.log('🔄 Manual reload triggered');
+  await loadAI();
+}
+
+function displayChatMessages() {
+  const messagesDiv = document.getElementById('chatMsgs');
+  if (!messagesDiv) {
+    console.error('❌ chatMsgs element not found!');
+    return;
+  }
+
+  console.log(`🎨 Displaying ${chatMessages.length} messages`);
+
   let html = `<div class="chat-msg ai">
     <div class="chat-msg-bubble">Hi! I'm your AI Expert Assistant. Ask me anything!</div>
   </div>`;
 
-  chatMessages.forEach(m => {
-    html += `<div class="chat-msg ${m.role === 'ai' ? 'ai' : 'user'}">
-      <div class="chat-msg-bubble">${escapeHtml(m.content)}</div>
+  if (chatMessages.length === 0) {
+    html += `<div class="chat-msg ai">
+      <div class="chat-msg-bubble" style="color:#999;font-style:italic">No previous messages. Start chatting!</div>
     </div>`;
+  }
+
+  chatMessages.forEach((m, index) => {
+    if (m.isTyping) {
+      // Show typing indicator
+      html += `<div class="chat-msg ai">
+        <div class="chat-msg-bubble"><span class="typing">Thinking...</span></div>
+      </div>`;
+    } else {
+      // Format timestamp
+      let timeStr = '';
+      if (m.timestamp) {
+        const msgDate = new Date(m.timestamp);
+        const now = new Date();
+        const isToday = msgDate.toDateString() === now.toDateString();
+        const isYesterday = new Date(now - 86400000).toDateString() === msgDate.toDateString();
+
+        if (isToday) {
+          timeStr = msgDate.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+        } else if (isYesterday) {
+          timeStr = 'Včera ' + msgDate.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+        } else {
+          timeStr = msgDate.toLocaleDateString('cs-CZ', { day: '2-digit', month: '2-digit' }) + ' ' +
+                    msgDate.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+        }
+      }
+
+      const imageHtml = m.hadImage
+        ? `<div style="background:#1a1a00;border:1px solid #ff0;padding:8px;border-radius:4px;margin-bottom:8px;font-size:11px">📷 Image was sent (not stored)</div>`
+        : '';
+      const wasUncertainBadge = m.wasUncertain
+        ? '<div style="font-size:9px;color:#ff0;margin-top:8px">⚠️ Sent to boss for review</div>'
+        : '';
+      const timestampHtml = timeStr
+        ? `<div style="font-size:9px;color:#666;margin-top:4px">${timeStr}</div>`
+        : '';
+      const errorStyle = m.isError ? ' style="color:#f55"' : '';
+      html += `<div class="chat-msg ${m.role === 'ai' ? 'ai' : 'user'}">
+        <div class="chat-msg-bubble"${errorStyle}>${imageHtml}${escapeHtml(m.content)}${wasUncertainBadge}${timestampHtml}</div>
+      </div>`;
+    }
   });
 
-  document.getElementById('chatMsgs').innerHTML = html;
-  document.getElementById('chatMsgs').scrollTop = document.getElementById('chatMsgs').scrollHeight;
+  messagesDiv.innerHTML = html;
+  messagesDiv.scrollTop = messagesDiv.scrollHeight;
 
-  // Load KB list
-  loadKnowledgeBase();
+  // Update message counter
+  const counterEl = document.getElementById('chatCount');
+  if (counterEl) {
+    counterEl.textContent = chatMessages.length > 0 ? `(${chatMessages.length})` : '';
+  }
+
+  console.log('✅ Messages displayed, scrolled to bottom');
 }
 
 // Toggle KB form type
@@ -1038,33 +1143,64 @@ RULES:
 async function sendMsg() {
   const input = document.getElementById('chatIn');
   const msg = input.value.trim();
-  if (!msg) return;
+  if (!msg && !selectedImage) return;
 
   input.value = '';
   const sendBtn = document.getElementById('sendBtn');
   sendBtn.disabled = true;
   sendBtn.textContent = '...';
 
-  // Add user message to display
-  document.getElementById('chatMsgs').innerHTML += `<div class="chat-msg user">
-    <div class="chat-msg-bubble">${escapeHtml(msg)}</div>
-  </div>`;
+  let imageDataUrl = null;
 
-  // Save user message
-  const userMsg = await DB.add('ai_chat_history', {
+  // Convert image to base64 data URL if selected
+  if (selectedImage) {
+    try {
+      console.log('Processing image...', 'info');
+      imageDataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(selectedImage);
+      });
+      clearImagePreview();
+    } catch (err) {
+      console.error('Image processing error:', err);
+      console.log('Failed to process image: ' + err.message, 'error');
+      sendBtn.disabled = false;
+      sendBtn.textContent = 'Send';
+      return;
+    }
+  }
+
+  // Optimistically add user message to local chat for immediate feedback
+  const chatMsgObj = {
+    role: 'user',
+    content: msg || 'What is in this image?',
+    timestamp: Date.now()
+  };
+  if (imageDataUrl) {
+    chatMsgObj.imageDataUrl = imageDataUrl; // Keep in memory for this conversation
+    chatMsgObj.hadImage = true;
+  }
+  chatMessages.push(chatMsgObj);
+  displayChatMessages(); // Update UI immediately
+
+  // Save user message to database (real-time listener will sync across devices)
+  const userMsgData = {
     userId: user.id,
     date: curDate,
     role: 'user',
-    content: msg,
-    timestamp: Date.now()
-  });
-  chatMessages.push({ role: 'user', content: msg, timestamp: Date.now() });
+    content: msg || 'What is in this image?',
+    timestamp: chatMsgObj.timestamp
+  };
+  if (imageDataUrl) {
+    userMsgData.hadImage = true; // Just mark that image was sent
+  }
+  await DB.add('ai_chat_history', userMsgData);
 
   // Show typing indicator
-  document.getElementById('chatMsgs').innerHTML += `<div class="chat-msg ai" id="aiTyping">
-    <div class="chat-msg-bubble"><span class="typing">Thinking</span></div>
-  </div>`;
-  document.getElementById('chatMsgs').scrollTop = document.getElementById('chatMsgs').scrollHeight;
+  chatMessages.push({ role: 'ai', content: '...', isTyping: true });
+  displayChatMessages();
 
   try {
     // Build context with smart retrieval based on user's question
@@ -1073,11 +1209,34 @@ async function sendMsg() {
     // Get ALL conversation messages for full memory (max 50 to avoid token limit)
     const recentMsgs = chatMessages.slice(-50);
 
+    // Choose model based on whether image is present
+    const model = imageDataUrl ? 'anthropic/claude-3.5-sonnet' : CONFIG.llm.model;
+
+    // Build API messages with proper image format for OpenRouter
     const apiMessages = [
       { role: 'system', content: systemPrompt },
-      ...recentMsgs.map(m => ({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.content })),
-      { role: 'user', content: msg }
+      ...recentMsgs.map(m => {
+        if (m.role === 'ai') {
+          return { role: 'assistant', content: m.content };
+        } else {
+          // User message - check if it has image data URL (only in current session memory)
+          if (m.imageDataUrl) {
+            return {
+              role: 'user',
+              content: [
+                { type: 'image_url', image_url: { url: m.imageDataUrl } },
+                { type: 'text', text: m.content }
+              ]
+            };
+          } else {
+            return { role: 'user', content: m.content };
+          }
+        }
+      })
     ];
+
+    // Current message already included in recentMsgs mapping above
+    // No need to add again
 
     const response = await fetch(CONFIG.llm.endpoint, {
       method: 'POST',
@@ -1088,7 +1247,7 @@ async function sendMsg() {
         'X-Title': 'TEAM Assistant'
       },
       body: JSON.stringify({
-        model: CONFIG.llm.model,
+        model: model,
         messages: apiMessages,
         max_tokens: 1500,
         temperature: 0.7
@@ -1131,35 +1290,44 @@ async function sendMsg() {
       );
     }
 
-    // Save AI response
+    // Remove typing indicator from local chat
+    chatMessages = chatMessages.filter(m => !m.isTyping);
+
+    // Optimistically add AI response to local chat for immediate feedback
+    const aiTimestamp = Date.now();
+    chatMessages.push({
+      role: 'ai',
+      content: aiReply,
+      timestamp: aiTimestamp,
+      wasUncertain: isUncertain
+    });
+    displayChatMessages(); // Update UI immediately
+
+    // Save AI response to database (real-time listener will sync across devices)
     await DB.add('ai_chat_history', {
       userId: user.id,
       date: curDate,
       role: 'ai',
       content: aiReply,
-      timestamp: Date.now(),
+      timestamp: aiTimestamp,
       wasUncertain: isUncertain
     });
-    chatMessages.push({ role: 'ai', content: aiReply, timestamp: Date.now() });
-
-    // Update display - with save to KB button
-    document.getElementById('aiTyping').outerHTML = `<div class="chat-msg ai">
-      <div class="chat-msg-bubble">${escapeHtml(aiReply)}${isUncertain ? '<div style="font-size:9px;color:#ff0;margin-top:8px">⚠️ Sent to boss for review</div>' : ''}</div>
-      <div class="chat-msg-actions">
-        <button class="btn btn-sm" onclick="saveToKB('${encodeURIComponent(msg)}', '${encodeURIComponent(aiReply)}')">💾 Save to KB</button>
-      </div>
-    </div>`;
 
   } catch (err) {
     console.error('AI Error:', err);
-    document.getElementById('aiTyping').outerHTML = `<div class="chat-msg ai">
-      <div class="chat-msg-bubble" style="color:#f55">Error: ${err.message || 'Could not get response. Check console.'}</div>
-    </div>`;
+    // Remove typing indicator and show error
+    chatMessages = chatMessages.filter(m => !m.isTyping);
+    chatMessages.push({
+      role: 'ai',
+      content: `Error: ${err.message || 'Could not get response. Please try again.'}`,
+      timestamp: Date.now(),
+      isError: true
+    });
+    displayChatMessages();
   }
 
   sendBtn.disabled = false;
   sendBtn.textContent = 'Send';
-  document.getElementById('chatMsgs').scrollTop = document.getElementById('chatMsgs').scrollHeight;
 }
 
 async function sendTelegramNotification(text) {
@@ -2251,6 +2419,63 @@ async function submitContent() {
 
   closeModal();
   loadContent();
+}
+
+// ============================================
+// IMAGE UPLOAD FOR AI CHAT
+// ============================================
+let selectedImage = null;
+
+function handleImageSelect(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  // Validate file size (max 10MB)
+  if (file.size > 10 * 1024 * 1024) {
+    console.log('Image too large. Max 10MB.', 'error');
+    return;
+  }
+
+  // Validate file type
+  if (!file.type.startsWith('image/')) {
+    console.log('Please select an image file.', 'error');
+    return;
+  }
+
+  selectedImage = file;
+
+  // Show preview
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    document.getElementById('previewImg').src = e.target.result;
+    document.getElementById('imagePreview').style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearImagePreview() {
+  selectedImage = null;
+  document.getElementById('imagePreview').style.display = 'none';
+  document.getElementById('previewImg').src = '';
+  document.getElementById('chatImageInput').value = '';
+}
+
+async function uploadImageToR2(file) {
+  const formData = new FormData();
+  formData.append('image', file);
+  formData.append('userId', user.id);
+
+  const response = await fetch('/upload-image', {
+    method: 'POST',
+    body: formData
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to upload image');
+  }
+
+  const data = await response.json();
+  return data.url;
 }
 
 // ============================================
