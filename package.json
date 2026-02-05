@@ -1,15 +1,27 @@
 {
   "name": "assexp",
   "version": "1.0.0",
+  "type": "module",
   "private": true,
   "scripts": {
     "dev": "wrangler pages dev . --port 8888",
+    "server": "node exiftool-server.js",
     "deploy": "wrangler pages deploy . --project-name mori-team-app",
     "deploy:worker": "wrangler deploy",
+    "deploy:firebase": "cd firebase-functions && firebase deploy --only functions:spoofVideo",
+    "deploy:all": "npm run deploy:firebase && npm run deploy",
     "login": "wrangler login",
     "tail": "wrangler tail"
   },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "firebase": "^12.9.0",
+    "multer": "^2.0.2"
+  },
   "devDependencies": {
-    "wrangler": "^3.0.0"
+    "firebase-tools": "^13.0.0",
+    "sharp": "^0.34.5",
+    "wrangler": "^3.114.17"
   }
 }

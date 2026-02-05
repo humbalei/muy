@@ -4,6 +4,10 @@
 // ============================================
 
 const VideoSpoofer = {
+  // API endpoint - uses same domain by default (Cloudflare proxy to Firebase)
+  // For local testing, set to 'http://localhost:3000'
+  apiEndpoint: localStorage.getItem('spoofer_api') || '',
+
   devices: [
     "iPhone 16 Pro",
     "iPhone 16 Pro Max",
@@ -17,6 +21,12 @@ const VideoSpoofer = {
     "Dubai", "Toronto", "Amsterdam", "Barcelona", "Rome",
     "Vienna", "Singapore", "Hong Kong", "Seoul", "Mumbai"
   ],
+
+  setApiEndpoint(url) {
+    this.apiEndpoint = url;
+    localStorage.setItem('spoofer_api', url);
+    console.log('[VideoSpoofer] API endpoint set to:', url);
+  },
 
   async spoof(file, city, device) {
     console.log('[VideoSpoofer] ========== START ==========');
@@ -32,7 +42,7 @@ const VideoSpoofer = {
 
     try {
       // Send to server
-      const response = await fetch('/spoof-video', {
+      const response = await fetch(`${this.apiEndpoint}/spoof-video`, {
         method: 'POST',
         body: formData
       });

@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+firebase-functions/node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+/tmp/
+
+# Environment
+.env
+.env.local
+
+# Build outputs
+dist/
+.wrangler/
+.firebase/
+
+# Test files
+*.test.js
+test*.mov
+*.mp4
+api_test.mov
+apple_sample.mp4
+clean_test.mov
+exiftool_gps_test.mov
+sample_reference.mov
+spoofed_from_api.mov
+test_*.mov
+test_*.mjs
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Firebase
+.firebaserc.local
+firebase-debug.log
+firebase-debug.*.log
