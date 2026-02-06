@@ -10,6 +10,7 @@ npm-debug.log*
 # Environment
 .env
 .env.local
+js/config.local.js
 
 # Build outputs
 dist/

@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TEAM - Dashboard</title>
+  <link rel="stylesheet" href="css/style.css?v=1017">
+  <style>
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+    .dashboard-card {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 20px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    .dashboard-card:hover {
+      border-color: #0f0;
+      transform: translateY(-2px);
+    }
+    .dashboard-card.critical {
+      border-color: #f55;
+    }
+    .dashboard-card.warning {
+      border-color: #ff0;
+    }
+    .dashboard-value {
+      font-size: 32px;
+      font-weight: bold;
+      color: #0f0;
+      margin: 10px 0;
+    }
+    .dashboard-label {
+      font-size: 14px;
+      color: #999;
+      text-transform: uppercase;
+    }
+    .dashboard-detail {
+      font-size: 12px;
+      color: #666;
+      margin-top: 10px;
+    }
+    .section-content {
+      display: none;
+      margin-top: 20px;
+      padding: 20px;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+    }
+    .section-content.active {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="logo">TEAM - Dashboard</div>
+    <div class="topbar-right">
+      <span class="topbar-user">Admin</span>
+      <a href="admin.html" class="btn btn-sm">Back to Admin</a>
+    </div>
+  </div>
+
+  <div class="content" style="padding: 20px;">
+    <h2 style="margin-bottom: 20px;">📊 System Overview</h2>
+
+    <!-- Dashboard Cards -->
+    <div class="dashboard-grid" id="dashboardCards"></div>
+
+    <!-- Section Details -->
+    <div id="sectionDetails"></div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="js/config.js?v=1017"></script>
+  <script src="js/config.local.js?v=1017"></script>
+  <script src="js/db.js?v=1017"></script>
+  <script>
+    DB.init();
+
+    const today = new Date().toISOString().split('T')[0];
+    let metrics = {};
+
+    async function loadDashboard() {
+      try {
+        // Collect metrics
+        metrics = await collectMetrics();
+
+        // Render cards
+        renderDashboardCards();
+      } catch (error) {
+        console.error('Dashboard error:', error);
+      }
+    }
+
+    async function collectMetrics() {
+      const m = {};
+
+      // Models
+      const models = await DB.getModels();
+      m.models = {
+        total: models.length,
+        potential: models.filter(x => x.status === 'potential').length,
+        active: models.filter(x => x.status === 'active').length,
+        newToday: models.filter(x => x.createdAt?.toDate().toISOString().split('T')[0] === today).length
+      };
+
+      // Content
+      const content = await DB.getContent();
+      m.content = {
+        total: content.length,
+        pending: content.filter(x => x.status === 'pending').length,
+        approved: content.filter(x => x.status === 'approved').length,
+        rejected: content.filter(x => x.status === 'rejected').length
+      };
+
+      // Daily Work
+      const dailyLogs = await DB.getAll('daily_logs', [
+        { field: 'date', value: today }
+      ]);
+
+      m.dailyWork = {
+        working: dailyLogs.filter(d => d.status === 'completed' || d.status === 'planned').length,
+        completed: dailyLogs.filter(d => d.status === 'completed').length,
+        totalHours: dailyLogs.reduce((sum, d) => sum + (d.hoursWorked || 0), 0),
+        totalEarned: dailyLogs.reduce((sum, d) => sum + ((d.hoursWorked || 0) * 2.5), 0),
+        logs: dailyLogs
+      };
+
+      // Tasks
+      const tasks = await DB.getAll('daily_tasks', [
+        { field: 'date', value: today }
+      ]);
+      m.tasks = {
+        total: tasks.length,
+        completed: tasks.filter(t => t.done).length,
+        pending: tasks.filter(t => !t.done).length
+      };
+
+      // Outreach
+      const accounts = await DB.getAll('accounts');
+      m.outreach = {
+        total: accounts.length,
+        instagram: accounts.filter(a => a.type === 'instagram').length,
+        twitter: accounts.filter(a => a.type === 'twitter').length,
+        webcam: accounts.filter(a => a.type === 'webcam').length
+      };
+
+      // Payments
+      const payroll = await DB.getAll('payroll', [
+        { field: 'status', value: 'pending' }
+      ]);
+      m.payments = {
+        pending: payroll.length,
+        pendingAmount: payroll.reduce((sum, p) => sum + (p.amount || 0), 0)
+      };
+
+      // AI Chat
+      const uncertainQ = await DB.getAll('uncertain_questions', [
+        { field: 'answered', value: false }
+      ]);
+      m.uncertainQuestions = uncertainQ.length;
+
+      return m;
+    }
+
+    function renderDashboardCards() {
+      const cards = [
+        {
+          id: 'dailyWork',
+          label: 'Team Work Today',
+          value: `${metrics.dailyWork.working}`,
+          detail: `${metrics.dailyWork.totalHours.toFixed(1)}h worked, $${metrics.dailyWork.totalEarned.toFixed(0)} earned`,
+          critical: metrics.dailyWork.working === 0
+        },
+        {
+          id: 'tasks',
+          label: 'Tasks Completion',
+          value: metrics.tasks.total > 0 ? `${Math.round(metrics.tasks.completed / metrics.tasks.total * 100)}%` : '0%',
+          detail: `${metrics.tasks.completed}/${metrics.tasks.total} completed`,
+          warning: metrics.tasks.pending > 5
+        },
+        {
+          id: 'content',
+          label: 'Content Pending',
+          value: metrics.content.pending,
+          detail: `${metrics.content.approved} approved total`,
+          critical: metrics.content.pending > 5,
+          warning: metrics.content.pending > 2
+        },
+        {
+          id: 'models',
+          label: 'Models',
+          value: metrics.models.active,
+          detail: `${metrics.models.potential} potential, ${metrics.models.newToday} new today`
+        },
+        {
+          id: 'outreach',
+          label: 'Outreach Accounts',
+          value: metrics.outreach.total,
+          detail: `IG: ${metrics.outreach.instagram}, TW: ${metrics.outreach.twitter}, WC: ${metrics.outreach.webcam}`
+        },
+        {
+          id: 'payments',
+          label: 'Pending Payments',
+          value: `$${metrics.payments.pendingAmount.toFixed(0)}`,
+          detail: `${metrics.payments.pending} payments waiting`,
+          warning: metrics.payments.pending > 0
+        },
+        {
+          id: 'uncertain',
+          label: 'AI Questions',
+          value: metrics.uncertainQuestions,
+          detail: 'Need review',
+          critical: metrics.uncertainQuestions > 0
+        }
+      ];
+
+      const html = cards.map(card => `
+        <div class="dashboard-card ${card.critical ? 'critical' : ''} ${card.warning ? 'warning' : ''}"
+             onclick="showSection('${card.id}')">
+          <div class="dashboard-label">${card.label}</div>
+          <div class="dashboard-value">${card.value}</div>
+          <div class="dashboard-detail">${card.detail}</div>
+        </div>
+      `).join('');
+
+      document.getElementById('dashboardCards').innerHTML = html;
+    }
+
+    function showSection(sectionId) {
+      const detailsDiv = document.getElementById('sectionDetails');
+
+      if (sectionId === 'dailyWork') {
+        const logs = metrics.dailyWork.logs;
+        const html = `
+          <div class="section-content active">
+            <h3>👥 Team Work Today (${today})</h3>
+            ${logs.length === 0 ? '<p>No work logged today</p>' : logs.map(log => `
+              <div style="padding: 15px; border: 1px solid #333; border-radius: 4px; margin-bottom: 10px;">
+                <div style="display: flex; justify-content: space-between;">
+                  <strong>${log.userId}</strong>
+                  <span style="color: ${log.status === 'completed' ? '#0f0' : '#ff0'}">${log.status}</span>
+                </div>
+                <div style="margin-top: 10px; color: #999;">
+                  Hours: ${log.hoursWorked || 0}h | Earned: $${((log.hoursWorked || 0) * 2.5).toFixed(2)}
+                </div>
+                ${log.report ? `<div style="margin-top: 10px; font-size: 12px; color: #666;">${log.report}</div>` : ''}
+              </div>
+            `).join('')}
+          </div>
+        `;
+        detailsDiv.innerHTML = html;
+      } else if (sectionId === 'content') {
+        detailsDiv.innerHTML = `
+          <div class="section-content active">
+            <h3>📸 Content Pending Review</h3>
+            <p>Open admin panel to review content</p>
+            <a href="admin.html#content" class="btn btn-primary">Go to Content Review</a>
+          </div>
+        `;
+      } else {
+        detailsDiv.innerHTML = `
+          <div class="section-content active">
+            <h3>${sectionId}</h3>
+            <p>Section details coming soon...</p>
+          </div>
+        `;
+      }
+    }
+
+    // Load on start
+    loadDashboard();
+
+    // Refresh every 30 seconds
+    setInterval(loadDashboard, 30000);
+  </script>
+</body>
+</html>
