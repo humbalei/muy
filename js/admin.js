@@ -372,7 +372,7 @@ async function loadTasks() {
     const taskDocId = t?.id || null;
     html += `<div class="task-item ${isDone ? 'done' : ''}" onclick="togglePresetTask('${p.id}', '${taskDocId}', ${isDone})" style="cursor:pointer">
       <span style="color:${isDone ? '#0f0' : '#f55'}">${isDone ? '✓' : '○'}</span>
-      <span class="task-name">${p.name}</span>
+      <span class="task-name">${p.name}${p.operative ? ' <span style="color:#4CAF50;font-weight:bold;font-size:9px">[OPERATIVE]</span>' : ''}</span>
       ${p.guide || p.images || p.video ? '<span style="color:#666;font-size:10px">(has guide)</span>' : ''}
     </div>`;
   });
