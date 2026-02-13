@@ -2494,11 +2494,20 @@ function renderModels(models) {
           <button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px" onclick="logCommunication('${m.id}')">Log Today</button>
           <button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px" onclick="modal('model',${JSON.stringify(m).replace(/"/g, '&quot;')})">Edit</button>
           ${m.status === 'active' ? `<button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px" onclick="modal('modelView','${m.id}')">View</button>` : ''}
+          <button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px;background:#c62828;color:#fff" onclick="deleteModel('${m.id}')">Delete</button>
         </div>
       </div>
     </div>`;
   });
   return html;
+}
+
+async function deleteModel(id) {
+  if (await confirmDialog('Delete this model? This cannot be undone.')) {
+    await DB.delete('models', id);
+    toast('Model deleted', 'success');
+    loadModels();
+  }
 }
 
 // ============================================
