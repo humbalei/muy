@@ -13,12 +13,13 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="TEAM">
 
-  <!-- Icons - use favicon.svg for everything -->
+  <!-- Icons -->
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
-  <link rel="apple-touch-icon" href="favicon.svg">
-  <link rel="apple-touch-icon" sizes="152x152" href="favicon.svg">
-  <link rel="apple-touch-icon" sizes="180x180" href="favicon.svg">
-  <link rel="apple-touch-icon" sizes="167x167" href="favicon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192x192.png">
+  <link rel="apple-touch-icon" href="icon-180x180.png">
+  <link rel="apple-touch-icon" sizes="152x152" href="icon-152x152.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="icon-180x180.png">
+  <link rel="apple-touch-icon" sizes="167x167" href="icon-167x167.png">
   <link rel="manifest" href="manifest.json">
 
   <link rel="stylesheet" href="css/style.css?v=1009">
@@ -40,6 +41,8 @@
     <a class="nav-link" data-s="outreach">Outreach</a>
     <a class="nav-link" data-s="leads">Leads</a>
     <a class="nav-link" data-s="models">Models</a>
+    <a class="nav-link" data-s="chatters">Chatters</a>
+    <a class="nav-link" data-s="spy">Spy</a>
     <a class="nav-link" data-s="content">Content</a>
     <a class="nav-link" data-s="posting">Posting</a>
     <a class="nav-link" data-s="settings">Settings</a>
@@ -305,7 +308,8 @@
         <div class="tab" data-t="o-tw">Twitter</div>
         <div class="tab" data-t="o-wc">Webcams</div>
         <div class="tab" data-t="o-of">OnlyFans</div>
-        <div class="tab" data-t="o-os">OfBombex</div>
+        <div class="tab" data-t="o-tk">TikTok</div>
+        <div class="tab" data-t="o-os">OFautopilot</div>
         <div class="tab" data-t="o-op">Openers</div>
         <div class="tab" data-t="o-fu">Follow-ups</div>
         <div class="tab" data-t="o-sc">Scripts</div>
@@ -413,10 +417,35 @@
         </div>
       </div>
 
-      <!-- OfBombex -->
+      <!-- TikTok -->
+      <div id="o-tk" class="tab-content">
+        <div class="box">
+          <div class="box-header">TikTok Accounts <button class="btn btn-sm btn-primary" onclick="modal('outreach-acc','tiktok')">Add Account</button></div>
+          <div class="box-body">
+            <div style="display:flex;gap:10px;margin-bottom:15px;flex-wrap:wrap">
+              <input type="text" id="tkFilterUsername" class="form-input" placeholder="Search username..." style="flex:1;min-width:150px" onkeyup="loadOutreachAccounts()">
+              <input type="text" id="tkFilterDevice" class="form-input" placeholder="Search device name..." style="flex:1;min-width:150px" onkeyup="loadOutreachAccounts()">
+              <select id="tkFilterLocation" class="form-select" style="flex:0.5;min-width:120px" onchange="loadOutreachAccounts()">
+                <option value="">All Locations</option>
+                <option value="Phone">Phone</option>
+                <option value="PC">PC</option>
+                <option value="AdsPower">AdsPower</option>
+              </select>
+              <select id="tkFilterStatus" class="form-select" style="flex:0.5;min-width:120px" onchange="loadOutreachAccounts()">
+                <option value="">All Status</option>
+                <option value="true">Healthy</option>
+                <option value="false">Expired</option>
+              </select>
+            </div>
+            <div id="tkList"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- OFautopilot -->
       <div id="o-os" class="tab-content">
         <div class="box">
-          <div class="box-header">OfBombex Tracking <button class="btn btn-sm btn-primary" onclick="modal('outseeker')">Log Today</button></div>
+          <div class="box-header">OFautopilot recruiting outreach <button class="btn btn-sm btn-primary" onclick="modal('outseeker')">Log Today</button></div>
           <div class="box-body">
             <div class="grid grid-3" style="margin-bottom:15px">
               <div class="stat-box">
@@ -436,6 +465,29 @@
             <div id="osLog"></div>
           </div>
         </div>
+
+        <!-- OFautopilot models outreach -->
+        <div class="box" style="margin-top:15px">
+          <div class="box-header">OFautopilot models outreach <button class="btn btn-sm btn-primary" onclick="modal('modelOutreach')">Log Today</button></div>
+          <div class="box-body">
+            <div class="grid grid-3" style="margin-bottom:15px">
+              <div class="stat-box">
+                <div class="stat-value" id="moTotalModels">0</div>
+                <div class="stat-label">Models Tracked</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-value" id="moTotalOutreached">0</div>
+                <div class="stat-label">Outreached Today</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-value" id="moTotalRemaining">0</div>
+                <div class="stat-label">Remaining in Collections</div>
+              </div>
+            </div>
+            <div class="box-header">Daily Logs</div>
+            <div id="moLog"></div>
+          </div>
+        </div>
       </div>
 
       <!-- Openers -->
@@ -451,6 +503,8 @@
                   <option value="instagram">Instagram</option>
                   <option value="twitter">Twitter</option>
                   <option value="webcam">Webcam</option>
+                  <option value="onlyfans">OnlyFans</option>
+                  <option value="tiktok">TikTok</option>
                 </select>
               </div>
               <div class="form-group" style="margin:0">
@@ -478,6 +532,8 @@
                   <option value="instagram">Instagram</option>
                   <option value="twitter">Twitter</option>
                   <option value="webcam">Webcam</option>
+                  <option value="onlyfans">OnlyFans</option>
+                  <option value="tiktok">TikTok</option>
                 </select>
               </div>
               <div class="form-group" style="margin:0">
@@ -505,6 +561,8 @@
                   <option value="instagram">Instagram</option>
                   <option value="twitter">Twitter</option>
                   <option value="webcam">Webcam</option>
+                  <option value="onlyfans">OnlyFans</option>
+                  <option value="tiktok">TikTok</option>
                 </select>
               </div>
               <div class="form-group" style="margin:0">
@@ -584,6 +642,110 @@
       </div>
       <div id="m-act" class="tab-content">
         <div class="grid grid-4" id="actList"></div>
+      </div>
+    </div>
+
+    <!-- ==================== CHATTERS ==================== -->
+    <div id="chatters" class="section">
+      <div class="section-title">Chatters <button class="btn btn-primary" onclick="modal('chatter')">Add Chatter</button></div>
+
+      <!-- Testing Guide (collapsible) -->
+      <div class="box" style="margin-bottom:15px">
+        <div class="box-header" style="cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
+          Testing Guide & Links <span style="font-size:10px;color:#999">(click to toggle)</span>
+        </div>
+        <div class="box-body" style="display:none">
+          <p style="color:#999;font-size:11px;margin-bottom:12px">Use these tests to evaluate chatter applicants. Benchmarks show minimum acceptable scores for ideal candidates.</p>
+          <div class="grid grid-2" style="gap:10px">
+            <div style="padding:8px;background:#0a0a0a;border:1px solid #333;border-radius:4px;font-size:11px">
+              <strong style="color:#0f0">English Quality</strong><br>
+              <span style="color:#999">Speaking good, Clearly speaking, Good english</span>
+            </div>
+            <div style="padding:8px;background:#0a0a0a;border:1px solid #333;border-radius:4px;font-size:11px">
+              <strong style="color:#0f0">Speedtest</strong> — <a href="https://www.speedtest.net" target="_blank" style="color:#0af">speedtest.net</a><br>
+              <span style="color:#999">Benchmark: 100mbps+</span>
+            </div>
+            <div style="padding:8px;background:#0a0a0a;border:1px solid #333;border-radius:4px;font-size:11px">
+              <strong style="color:#0f0">Computer Stress</strong> — <a href="https://mprep.info/gpu/" target="_blank" style="color:#0af">mprep.info/gpu/</a><br>
+              <span style="color:#999">Benchmark: CPU & GPU good</span>
+            </div>
+            <div style="padding:8px;background:#0a0a0a;border:1px solid #333;border-radius:4px;font-size:11px">
+              <strong style="color:#0f0">Typing Test</strong> — <a href="https://www.typingtest.com" target="_blank" style="color:#0af">typingtest.com</a><br>
+              <span style="color:#999">Benchmark: 50-60wpm+</span>
+            </div>
+            <div style="padding:8px;background:#0a0a0a;border:1px solid #333;border-radius:4px;font-size:11px">
+              <strong style="color:#0f0">IQ Test</strong> — <a href="https://brght.org" target="_blank" style="color:#0af">brght.org</a><br>
+              <span style="color:#999">Benchmark: 100+</span>
+            </div>
+            <div style="padding:8px;background:#0a0a0a;border:1px solid #333;border-radius:4px;font-size:11px">
+              <strong style="color:#0f0">EQ Test</strong> — <a href="https://www.mindtools.com/a3tbat1/how-emotionally-intelligent-are-you" target="_blank" style="color:#0af">mindtools.com</a><br>
+              <span style="color:#999">Benchmark: 75-85/100+</span>
+            </div>
+            <div style="padding:8px;background:#0a0a0a;border:1px solid #333;border-radius:4px;font-size:11px">
+              <strong style="color:#0f0">Empathy Test</strong> — <a href="https://psychology-tools.com/test/empathy-quotient" target="_blank" style="color:#0af">psychology-tools.com</a><br>
+              <span style="color:#999">Benchmark: 50-60/80+</span>
+            </div>
+            <div style="padding:8px;background:#0a0a0a;border:1px solid #333;border-radius:4px;font-size:11px">
+              <strong style="color:#0f0">English Test</strong> — <a href="https://www.cambridgeenglish.org/test-your-english/general-english/" target="_blank" style="color:#0af">cambridgeenglish.org</a><br>
+              <span style="color:#999">Benchmark: good + on call</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <div class="tab active" data-t="ch-applying">Applying</div>
+        <div class="tab" data-t="ch-approved">Approved</div>
+        <div class="tab" data-t="ch-rejected">Rejected</div>
+      </div>
+      <div id="ch-applying" class="tab-content active">
+        <div class="grid grid-3" id="chatterApplying"></div>
+      </div>
+      <div id="ch-approved" class="tab-content">
+        <div class="grid grid-3" id="chatterApproved"></div>
+      </div>
+      <div id="ch-rejected" class="tab-content">
+        <div class="grid grid-3" id="chatterRejected"></div>
+      </div>
+    </div>
+
+    <!-- ==================== SPY ==================== -->
+    <div id="spy" class="section">
+      <div class="section-title">Spy <button class="btn btn-primary" onclick="modal('spyApply')">Add Apply</button></div>
+
+      <!-- Stats -->
+      <div class="grid grid-4" style="margin-bottom:15px">
+        <div class="stat-box">
+          <div class="stat-value" id="spyTotal">0</div>
+          <div class="stat-label">Total Applies</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value" id="spyAccepted">0</div>
+          <div class="stat-label">Accepted</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value" id="spyTotalFans">0</div>
+          <div class="stat-label">Total Fans</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value" id="spyImported">0</div>
+          <div class="stat-label">Imported to OFautopilot</div>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <div class="tab active" data-t="spy-applying">Applying</div>
+        <div class="tab" data-t="spy-accepted">Accepted</div>
+        <div class="tab" data-t="spy-rejected">Rejected</div>
+      </div>
+      <div id="spy-applying" class="tab-content active">
+        <div class="grid grid-3" id="spyApplyingList"></div>
+      </div>
+      <div id="spy-accepted" class="tab-content">
+        <div class="grid grid-3" id="spyAcceptedList"></div>
+      </div>
+      <div id="spy-rejected" class="tab-content">
+        <div class="grid grid-3" id="spyRejectedList"></div>
       </div>
     </div>
 

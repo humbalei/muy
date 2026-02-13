@@ -13,17 +13,18 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="TEAM">
 
-  <!-- Icons - use favicon.svg for everything -->
+  <!-- Icons -->
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
-  <link rel="apple-touch-icon" href="favicon.svg">
-  <link rel="apple-touch-icon" sizes="152x152" href="favicon.svg">
-  <link rel="apple-touch-icon" sizes="180x180" href="favicon.svg">
-  <link rel="apple-touch-icon" sizes="167x167" href="favicon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192x192.png">
+  <link rel="apple-touch-icon" href="icon-180x180.png">
+  <link rel="apple-touch-icon" sizes="152x152" href="icon-152x152.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="icon-180x180.png">
+  <link rel="apple-touch-icon" sizes="167x167" href="icon-167x167.png">
 
   <!-- Manifest -->
   <link rel="manifest" href="manifest.json">
 
-  <link rel="stylesheet" href="css/style.css?v=1008">
+  <link rel="stylesheet" href="css/style.css?v=1009">
 </head>
 <body class="login-page">
   <div class="login-box">
@@ -53,9 +54,9 @@
 
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-  <script src="js/config.js?v=1007"></script>
-  <script src="js/config.local.js?v=1007"></script>
-  <script src="js/db.js?v=1007"></script>
+  <script src="js/config.js?v=1009"></script>
+  <script src="js/config.local.js?v=1009"></script>
+  <script src="js/db.js?v=1009"></script>
 
   <!-- PWA Service Worker Registration - DISABLED for stability -->
   <script>
@@ -71,18 +72,9 @@
   </script>
 
   <script>
-    console.log('🚀 INDEX.HTML LOADED - v1007');
-
+    console.log('🚀 INDEX.HTML LOADED - v1008');
     DB.init();
     console.log('✅ DB.init() completed');
-    console.log('📋 DB.isLoggedIn():', DB.isLoggedIn());
-
-    if (DB.isLoggedIn()) {
-      console.log('✅ User already logged in, redirecting...');
-      const user = DB.getUser();
-      console.log('👤 User:', user);
-      location.href = user.role === 'admin' ? 'admin.html' : 'assistant.html';
-    }
 
     document.getElementById('loginForm').onsubmit = async (e) => {
       e.preventDefault();
@@ -94,27 +86,39 @@
       btn.disabled = true;
       btn.textContent = 'Loading...';
 
-      const username = document.getElementById('username').value.trim();
-      const password = document.getElementById('password').value;
-      const rememberMe = document.getElementById('rememberMe').checked;
+      try {
+        const username = document.getElementById('username').value.trim();
+        const password = document.getElementById('password').value;
+        const rememberMe = document.getElementById('rememberMe').checked;
 
-      console.log('👤 Username:', username);
-      console.log('🔒 Password length:', password.length);
-      console.log('💾 Remember Me:', rememberMe);
+        console.log('👤 Username:', username);
+        console.log('🔒 Password length:', password.length);
+        console.log('💾 Remember Me:', rememberMe);
 
-      const r = await DB.login(username, password, rememberMe);
+        const r = await DB.login(username, password, rememberMe);
 
-      console.log('📥 Login result:', r);
+        console.log('📥 Login result:', r);
 
-      if (r.success) {
-        console.log('✅ LOGIN SUCCESS!');
-        console.log('👤 User role:', r.user.role);
-        const targetPage = r.user.role === 'admin' ? 'admin.html' : 'assistant.html';
-        console.log('🔄 Redirecting to:', targetPage);
-        location.href = targetPage;
-      } else {
-        console.error('❌ LOGIN FAILED:', r.error);
-        err.textContent = r.error;
+        if (r.success) {
+          console.log('✅ LOGIN SUCCESS!');
+          console.log('👤 User role:', r.user.role);
+          console.log('💾 Waiting for session to save...');
+
+          // Wait a moment for localStorage/sessionStorage to fully write
+          await new Promise(resolve => setTimeout(resolve, 100));
+
+          console.log('🔄 Redirecting to admin.html');
+          window.location.replace('admin.html');
+        } else {
+          console.error('❌ LOGIN FAILED:', r.error);
+          err.textContent = r.error || 'Login failed';
+          err.style.display = 'block';
+          btn.disabled = false;
+          btn.textContent = 'Login';
+        }
+      } catch (error) {
+        console.error('❌ LOGIN ERROR:', error);
+        err.textContent = 'Error: ' + error.message;
         err.style.display = 'block';
         btn.disabled = false;
         btn.textContent = 'Login';
