@@ -21,7 +21,7 @@
   <link rel="apple-touch-icon" sizes="167x167" href="favicon.svg">
   <link rel="manifest" href="manifest.json">
 
-  <link rel="stylesheet" href="css/style.css?v=1008">
+  <link rel="stylesheet" href="css/style.css?v=1009">
 </head>
 <body>
   <!-- TOP BAR -->
@@ -304,7 +304,8 @@
         <div class="tab active" data-t="o-ig">Instagram</div>
         <div class="tab" data-t="o-tw">Twitter</div>
         <div class="tab" data-t="o-wc">Webcams</div>
-        <div class="tab" data-t="o-os">Outseeker</div>
+        <div class="tab" data-t="o-of">OnlyFans</div>
+        <div class="tab" data-t="o-os">OfBombex</div>
         <div class="tab" data-t="o-op">Openers</div>
         <div class="tab" data-t="o-fu">Follow-ups</div>
         <div class="tab" data-t="o-sc">Scripts</div>
@@ -387,10 +388,35 @@
         </div>
       </div>
 
-      <!-- Outseeker -->
+      <!-- OnlyFans -->
+      <div id="o-of" class="tab-content">
+        <div class="box">
+          <div class="box-header">OnlyFans Accounts <button class="btn btn-sm btn-primary" onclick="modal('outreach-acc','onlyfans')">Add Account</button></div>
+          <div class="box-body">
+            <div style="display:flex;gap:10px;margin-bottom:15px;flex-wrap:wrap">
+              <input type="text" id="ofFilterUsername" class="form-input" placeholder="Search username..." style="flex:1;min-width:150px" onkeyup="loadOutreachAccounts()">
+              <input type="text" id="ofFilterDevice" class="form-input" placeholder="Search device name..." style="flex:1;min-width:150px" onkeyup="loadOutreachAccounts()">
+              <select id="ofFilterLocation" class="form-select" style="flex:0.5;min-width:120px" onchange="loadOutreachAccounts()">
+                <option value="">All Locations</option>
+                <option value="Phone">Phone</option>
+                <option value="PC">PC</option>
+                <option value="AdsPower">AdsPower</option>
+              </select>
+              <select id="ofFilterStatus" class="form-select" style="flex:0.5;min-width:120px" onchange="loadOutreachAccounts()">
+                <option value="">All Status</option>
+                <option value="true">Active</option>
+                <option value="false">Inactive</option>
+              </select>
+            </div>
+            <div id="ofList"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- OfBombex -->
       <div id="o-os" class="tab-content">
         <div class="box">
-          <div class="box-header">Outseeker Tracking <button class="btn btn-sm btn-primary" onclick="modal('outseeker')">Log Today</button></div>
+          <div class="box-header">OfBombex Tracking <button class="btn btn-sm btn-primary" onclick="modal('outseeker')">Log Today</button></div>
           <div class="box-body">
             <div class="grid grid-3" style="margin-bottom:15px">
               <div class="stat-box">
@@ -519,6 +545,7 @@
               <option value="instagram">📷 Instagram</option>
               <option value="twitter">🐦 Twitter</option>
               <option value="webcams">🎥 Webcams</option>
+              <option value="onlyfans">💖 OnlyFans</option>
             </select>
           </div>
         </div>
@@ -702,11 +729,12 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/piexifjs@1.0.6/piexif.min.js"></script>
-  <script src="js/config.js?v=1007"></script>
-  <script src="js/config.local.js?v=1007"></script>
-  <script src="js/db.js?v=1007"></script>
-  <script src="js/video-spoof.js?v=1007"></script>
-  <script src="js/admin2.js?v=1007"></script>
+  <script src="js/config.js?v=1009"></script>
+  <script src="js/config.local.js?v=1009"></script>
+  <script src="js/db.js?v=1009"></script>
+  <script src="js/video-spoof.js?v=1009"></script>
+  <script src="js/photo-spoof.js?v=1010"></script>
+  <script src="js/admin.js?v=1011"></script>
 
   <!-- PWA Service Worker Registration - DISABLED for stability -->
   <script>
