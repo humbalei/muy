@@ -658,7 +658,7 @@ async function loadCalendar() {
       const allManualTasks = await DB.getAll('manual_tasks', [{ field: 'userId', value: userId }]);
       const presets = await DB.getTaskPresets();
       const presetsMap = {};
-      presets.forEach(p => presetsMap[p.id] = p.name);
+      presets.forEach(p => presetsMap[p.id] = { name: p.name, operative: p.operative });
 
       const sortedLogs = [...monthLogs].sort((a, b) => b.date.localeCompare(a.date));
 
@@ -680,8 +680,10 @@ async function loadCalendar() {
         dayPresetTasks.forEach(t => {
           if (shownTasks.has(t.taskId)) return;
           shownTasks.add(t.taskId);
-          const name = presetsMap[t.taskId] || t.taskId;
-          tasksHtml += `<span class="history-task done">✓ ${name}</span>`;
+          const preset = presetsMap[t.taskId];
+          const name = preset ? preset.name : t.taskId;
+          const opTag = preset && preset.operative ? ' <span style="color:#4CAF50;font-weight:bold;font-size:9px">[OPERATIVE]</span>' : '';
+          tasksHtml += `<span class="history-task done">✓ ${name}${opTag}</span>`;
         });
         dayManualTasks.filter(t => t.done).forEach(t => {
           if (shownTasks.has(t.name)) return;
