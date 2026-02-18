@@ -200,6 +200,41 @@ async function loadDayDetail() {
   }
 }
 
+// Calculate bonus from manual_tasks for current user+date
+async function calcBonusForUser(date) {
+  const tasks = await DB.getAll('manual_tasks', [
+    { field: 'userId', value: user.id },
+    { field: 'date', value: date }
+  ]);
+  return tasks.filter(t => t.done && t.bonus > 0).reduce((sum, t) => sum + (t.bonus || 0), 0);
+}
+
+// Sync work_days.bonus and payroll amount for current user+date
+async function syncBonusAndPayrollForUser(date) {
+  const bonus = await calcBonusForUser(date);
+  const wds = await DB.getAll('work_days', [
+    { field: 'userId', value: user.id },
+    { field: 'date', value: date }
+  ]);
+  if (wds.length > 0) {
+    await DB.update('work_days', wds[0].id, { bonus });
+    const hours = wds[0].hours || 0;
+    if (wds[0].status === 'completed') {
+      const rateSetting = await DB.getSetting('hourly_rate');
+      const rate = rateSetting?.value || CONFIG.hourlyRate;
+      const amount = (hours * rate) + bonus;
+      const payrolls = await DB.getAll('payroll', [
+        { field: 'userId', value: user.id },
+        { field: 'date', value: date }
+      ]);
+      const pending = payrolls.filter(p => p.status === 'pending');
+      if (pending.length > 0) {
+        await DB.update('payroll', pending[0].id, { hours, bonus, amount });
+      }
+    }
+  }
+}
+
 async function getDayData(date) {
   const days = await DB.getAll('work_days', [
     { field: 'userId', value: user.id },
@@ -222,9 +257,11 @@ async function setDayStatus(status) {
     newStatus = 'planned'; // Reset to planned
   }
 
+  const bonus = await calcBonusForUser(curDate);
+
   if (existing.length > 0) {
-    await DB.update('work_days', existing[0].id, { status: newStatus });
-    dayData = { ...existing[0], status: newStatus };
+    await DB.update('work_days', existing[0].id, { status: newStatus, bonus });
+    dayData = { ...existing[0], status: newStatus, bonus };
   } else {
     const newDay = {
       userId: user.id,
@@ -232,6 +269,7 @@ async function setDayStatus(status) {
       status: newStatus,
       hours: 0,
       report: '',
+      bonus: bonus,
       createdAt: new Date()
     };
     await DB.add('work_days', newDay);
@@ -240,16 +278,7 @@ async function setDayStatus(status) {
 
   // If completing day, auto-create pending payment
   if (newStatus === 'completed') {
-    // Get bonus from completed bonus tasks
-    const manualTasks = await DB.getAll('manual_tasks', [
-      { field: 'userId', value: user.id },
-      { field: 'date', value: curDate }
-    ]);
-    const completedBonus = manualTasks.filter(t => t.done && t.bonus > 0).reduce((sum, t) => sum + (t.bonus || 0), 0);
-
-    const hours = dayData.hours || 0;
-    // Always create pending payment when day is completed
-    await createPendingPayment(curDate, hours, completedBonus);
+    await createPendingPayment(curDate, dayData.hours || 0, bonus);
   }
 
   // If un-completing day, remove pending payment
@@ -315,10 +344,11 @@ async function saveDayReport() {
     { field: 'date', value: curDate }
   ]);
 
+  const bonus = await calcBonusForUser(curDate);
   let dayStatus = 'planned';
   if (existing.length > 0) {
     dayStatus = existing[0].status;
-    await DB.update('work_days', existing[0].id, { hours, report });
+    await DB.update('work_days', existing[0].id, { hours, report, bonus });
   } else {
     await DB.add('work_days', {
       userId: user.id,
@@ -326,21 +356,14 @@ async function saveDayReport() {
       status: 'planned',
       hours: hours,
       report: report,
+      bonus: bonus,
       createdAt: new Date()
     });
   }
 
   // If day is already completed, update the pending payment
   if (dayStatus === 'completed') {
-    // Get bonus from completed bonus tasks
-    const manualTasks = await DB.getAll('manual_tasks', [
-      { field: 'userId', value: user.id },
-      { field: 'date', value: curDate }
-    ]);
-    const completedBonus = manualTasks.filter(t => t.done && t.bonus > 0).reduce((sum, t) => sum + (t.bonus || 0), 0);
-
-    // Always update payment for completed days
-    await updatePendingPayment(curDate, hours, completedBonus);
+    await updatePendingPayment(curDate, hours, bonus);
   }
 
   toast('Report saved!', 'success');
@@ -500,30 +523,24 @@ async function saveManualTask() {
   });
 
   hideAddTask();
+  await syncBonusAndPayrollForUser(curDate);
   loadDayDetail();
+  loadPayroll();
 }
 
 async function toggleManualTask(id, done) {
   await DB.update('manual_tasks', id, { done });
-
-  // Check if day is completed - if so, update pending payment
-  const dayData = await getDayData(curDate);
-  if (dayData.status === 'completed') {
-    const manualTasks = await DB.getAll('manual_tasks', [
-      { field: 'userId', value: user.id },
-      { field: 'date', value: curDate }
-    ]);
-    const completedBonus = manualTasks.filter(t => t.done && t.bonus > 0).reduce((sum, t) => sum + (t.bonus || 0), 0);
-    await updatePendingPayment(curDate, dayData.hours || 0, completedBonus);
-  }
-
+  await syncBonusAndPayrollForUser(curDate);
   loadDayDetail();
+  loadPayroll();
 }
 
 async function delManualTask(id) {
   if (await confirmDialog('Delete this task?')) {
     await DB.delete('manual_tasks', id);
+    await syncBonusAndPayrollForUser(curDate);
     loadDayDetail();
+    loadPayroll();
   }
 }
 
@@ -701,6 +718,13 @@ async function loadCalendar() {
   const rateSetting = await DB.getSetting('hourly_rate');
   const rate = rateSetting?.value || CONFIG.hourlyRate;
 
+  // Fetch manual_tasks for bonus calculation
+  const allManualTasks = await DB.getAll('manual_tasks', [{ field: 'userId', value: user.id }]);
+  const monthBonusMap = {};
+  allManualTasks.filter(t => t.done && t.bonus > 0 && t.date >= startDate && t.date <= endDate).forEach(t => {
+    monthBonusMap[t.date] = (monthBonusMap[t.date] || 0) + (t.bonus || 0);
+  });
+
   let totalHours = 0;
   let totalBonus = 0;
   let completedDays = 0;
@@ -711,7 +735,7 @@ async function loadCalendar() {
     if (day.status === 'completed') {
       completedDays++;
       totalHours += day.hours || 0;
-      totalBonus += day.bonus || 0;
+      totalBonus += monthBonusMap[day.date] || day.bonus || 0;
 
       // Count tasks
       const tasks = await DB.getDailyTasks(user.id, day.date);
@@ -788,7 +812,8 @@ async function loadCalendar() {
     histHtml = '<table class="table"><thead><tr><th>Date</th><th>Status</th><th>Hours</th><th>Earned</th></tr></thead><tbody>';
 
     for (const day of sortedDays) {
-      const earned = day.status === 'completed' ? ((day.hours || 0) * rate) + (day.bonus || 0) : 0;
+      const dayBonus = monthBonusMap[day.date] || day.bonus || 0;
+      const earned = day.status === 'completed' ? ((day.hours || 0) * rate) + dayBonus : 0;
       const statusBadge = day.status === 'completed' ? '<span class="status status-healthy">Done</span>' :
                           day.status === 'dayoff' ? '<span class="status" style="background:#f55">Off</span>' :
                           '<span class="status status-pending">Planned</span>';
@@ -1271,6 +1296,13 @@ async function sendMsg() {
     ];
     const isUncertain = uncertainPhrases.some(p => aiReply.toLowerCase().includes(p));
 
+    // Always send to Telegram
+    sendTelegramNotification(
+      `💬 ${isUncertain ? '⚠️ Uncertain' : 'Chat'} from ${user.id}\n\n` +
+      `Q: ${msg}\n\n` +
+      `AI: ${aiReply.substring(0, 500)}${aiReply.length > 500 ? '...' : ''}`
+    );
+
     if (isUncertain) {
       // Log uncertain question
       await DB.add('uncertain_questions', {
@@ -1280,14 +1312,6 @@ async function sendMsg() {
         answered: false,
         timestamp: Date.now()
       });
-
-      // Send to Telegram
-      sendTelegramNotification(
-        `⚠️ Uncertain Question from ${user.id}\n\n` +
-        `Q: ${msg}\n\n` +
-        `AI: ${aiReply.substring(0, 500)}${aiReply.length > 500 ? '...' : ''}\n\n` +
-        `Please add this to the knowledge base if needed.`
-      );
     }
 
     // Remove typing indicator from local chat

@@ -67,6 +67,8 @@ function loadSection(s) {
     case 'outreach': loadOutreach(); break;
     case 'leads': loadLeads(); break;
     case 'models': loadModels(); break;
+    case 'chatters': loadChatters(); break;
+    case 'spy': loadSpy(); break;
     case 'content': loadContent(); break;
     case 'posting': loadPosting(); break;
     case 'settings': loadSettings(); break;
@@ -113,13 +115,79 @@ function selectDate(date) {
 // ============================================
 // DAILY SECTION
 // ============================================
-const userId = CONFIG.assistant;
+let userId = CONFIG.assistant;
+
+async function loadAssistantList() {
+  try {
+    const snapshot = await DB.db.collection('users').get();
+    const assistants = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      if (data.role === 'assistant') {
+        assistants.push(doc.id);
+      }
+    });
+    const select = document.getElementById('assistantSelect');
+    select.innerHTML = assistants.map(a =>
+      `<option value="${a}" ${a === userId ? 'selected' : ''}>@${a}</option>`
+    ).join('');
+    if (assistants.length > 0 && !assistants.includes(userId)) {
+      userId = assistants[0];
+      select.value = userId;
+    }
+  } catch (e) {
+    console.error('Error loading assistants:', e);
+  }
+}
+
+function switchAssistant(id) {
+  userId = id;
+  loadDaily();
+}
 
 async function loadDaily() {
+  await loadAssistantList();
+  await recalcAllPending();
+  await loadPaymentSummary();
   await loadDayDetail();
   await loadPayroll();
   await loadWallets();
   await loadCalendar();
+}
+
+// Calculate bonus from manual_tasks for a given user+date
+async function calcBonus(uid, date) {
+  const tasks = await DB.getAll('manual_tasks', [
+    { field: 'userId', value: uid },
+    { field: 'date', value: date }
+  ]);
+  return tasks.filter(t => t.done && t.bonus > 0).reduce((sum, t) => sum + (t.bonus || 0), 0);
+}
+
+// Sync work_days.bonus and payroll amount for a given user+date
+async function syncBonusAndPayroll(uid, date) {
+  const bonus = await calcBonus(uid, date);
+  const wds = await DB.getAll('work_days', [
+    { field: 'userId', value: uid },
+    { field: 'date', value: date }
+  ]);
+  if (wds.length > 0) {
+    await DB.update('work_days', wds[0].id, { bonus });
+    const hours = wds[0].hours || 0;
+    if (wds[0].status === 'completed') {
+      const rateSetting = await DB.getSetting('hourly_rate');
+      const rate = rateSetting?.value || CONFIG.hourlyRate || 5;
+      const amount = (hours * rate) + bonus;
+      const payrolls = await DB.getAll('payroll', [
+        { field: 'userId', value: uid },
+        { field: 'date', value: date }
+      ]);
+      const pending = payrolls.filter(p => p.status === 'pending');
+      if (pending.length > 0) {
+        await DB.update('payroll', pending[0].id, { hours, bonus, amount });
+      }
+    }
+  }
 }
 
 // Get work_days data for a specific date
@@ -197,9 +265,11 @@ async function setDayStatus(status) {
     newStatus = 'planned';
   }
 
+  const bonus = await calcBonus(userId, curDate);
+
   if (existing.length > 0) {
-    await DB.update('work_days', existing[0].id, { status: newStatus });
-    dayData = { ...existing[0], status: newStatus };
+    await DB.update('work_days', existing[0].id, { status: newStatus, bonus });
+    dayData = { ...existing[0], status: newStatus, bonus };
   } else {
     const newDay = {
       userId: userId,
@@ -207,15 +277,16 @@ async function setDayStatus(status) {
       status: newStatus,
       hours: 0,
       report: '',
+      bonus: bonus,
       createdAt: new Date()
     };
     await DB.add('work_days', newDay);
     dayData = newDay;
   }
 
-  // If marking as completed, create pending payment
+  // If marking as completed, create pending payment with bonus
   if (newStatus === 'completed') {
-    await createPendingPayment(curDate, dayData.hours || 0);
+    await createPendingPayment(curDate, dayData.hours || 0, bonus);
   }
 
   // If un-completing, remove pending payment
@@ -230,8 +301,8 @@ async function setDayStatus(status) {
 }
 
 // Create pending payment for completed day
-async function createPendingPayment(date, hours) {
-  console.log('createPendingPayment called:', { date, hours, userId });
+async function createPendingPayment(date, hours, bonus = 0) {
+  console.log('createPendingPayment called:', { date, hours, bonus, userId });
   try {
     // Check if payment already exists
     const existing = await DB.getAll('payroll', [
@@ -242,13 +313,13 @@ async function createPendingPayment(date, hours) {
 
     const rateSetting = await DB.getSetting('hourly_rate');
     const rate = rateSetting?.value || CONFIG.hourlyRate || 5;
-    const amount = hours * rate;
-    console.log('Payment calc:', { rate, amount });
+    const amount = (hours * rate) + bonus;
+    console.log('Payment calc:', { rate, bonus, amount });
 
     if (existing.length > 0) {
       // Update if pending
       if (existing[0].status === 'pending') {
-        await DB.update('payroll', existing[0].id, { hours, amount });
+        await DB.update('payroll', existing[0].id, { hours, bonus, amount });
         console.log('Updated existing payment:', existing[0].id);
       }
     } else {
@@ -257,6 +328,7 @@ async function createPendingPayment(date, hours) {
         userId: userId,
         date: date,
         hours: hours,
+        bonus: bonus,
         amount: amount,
         status: 'pending',
         createdAt: new Date()
@@ -291,10 +363,11 @@ async function saveDayReport() {
     { field: 'date', value: curDate }
   ]);
 
+  const bonus = await calcBonus(userId, curDate);
   let dayStatus = 'planned';
   if (existing.length > 0) {
     dayStatus = existing[0].status;
-    await DB.update('work_days', existing[0].id, { hours, report });
+    await DB.update('work_days', existing[0].id, { hours, report, bonus });
   } else {
     await DB.add('work_days', {
       userId: userId,
@@ -302,19 +375,21 @@ async function saveDayReport() {
       status: 'planned',
       hours: hours,
       report: report,
+      bonus: bonus,
       createdAt: new Date()
     });
   }
 
-  // If day is completed, update the pending payment
+  // If day is completed, update the pending payment with bonus
   if (dayStatus === 'completed') {
-    await createPendingPayment(curDate, hours);
+    await createPendingPayment(curDate, hours, bonus);
   }
 
   toast('Report saved!', 'success');
   loadDayDetail();
   loadCalendar();
   loadPayroll();
+  loadPaymentSummary();
 }
 
 // Plan next 7 days as work days
@@ -470,7 +545,9 @@ async function saveManualTask() {
   });
 
   hideAddTask();
+  await syncBonusAndPayroll(userId, curDate);
   loadTasks();
+  loadDayDetail();
   toast('Task added', 'success');
 }
 
@@ -478,7 +555,11 @@ async function toggleManualTask(id, done) {
   console.log('toggleManualTask called:', id, done);
   try {
     await DB.update('manual_tasks', id, { done });
+    await syncBonusAndPayroll(userId, curDate);
     loadTasks();
+    loadDayDetail();
+    loadPayroll();
+    loadPaymentSummary();
   } catch (e) {
     console.error('Toggle manual task error:', e);
     toast('Error toggling task', 'error');
@@ -488,7 +569,11 @@ async function toggleManualTask(id, done) {
 async function deleteManualTask(id) {
   if (await confirmDialog('Delete this task?')) {
     await DB.delete('manual_tasks', id);
+    await syncBonusAndPayroll(userId, curDate);
     loadTasks();
+    loadDayDetail();
+    loadPayroll();
+    loadPaymentSummary();
     toast('Task deleted', 'success');
   }
 }
@@ -547,6 +632,389 @@ async function markPaid(id) {
     await DB.update('payroll', id, { status: 'paid', paidAt: new Date() });
     toast('Payment marked as paid', 'success');
     loadPayroll();
+    loadPaymentSummary();
+  }
+}
+
+// --- SYNC PAYROLL: create missing payroll records for all work days with hours ---
+async function recalcAllPending() {
+  try {
+    const rateSetting = await DB.getSetting('hourly_rate');
+    const rate = rateSetting?.value || CONFIG.hourlyRate || 5;
+
+    const allPayrolls = await DB.getAll('payroll');
+    const allWorkDays = await DB.getAll('work_days');
+    const allManualTasks = await DB.getAll('manual_tasks');
+
+    // Get admin users to exclude
+    const snapshot = await DB.db.collection('users').get();
+    const adminUsers = [];
+    snapshot.forEach(doc => { if (doc.data().role === 'admin') adminUsers.push(doc.id); });
+
+    // Build bonus lookup from manual_tasks: key = "userId_date" -> bonus sum
+    const bonusMap = {};
+    allManualTasks.filter(t => t.done && t.bonus > 0).forEach(t => {
+      const key = `${t.userId}_${t.date}`;
+      bonusMap[key] = (bonusMap[key] || 0) + (t.bonus || 0);
+    });
+
+    // All completed days where hours were logged, excluding admins
+    const workedDays = allWorkDays.filter(w => {
+      const bonus = bonusMap[`${w.userId}_${w.date}`] || w.bonus || 0;
+      return w.status === 'completed' && ((w.hours || 0) > 0 || bonus > 0) && !adminUsers.includes(w.userId);
+    });
+
+    for (const wd of workedDays) {
+      const hours = wd.hours || 0;
+      // Use manual_tasks bonus (source of truth), fallback to work_days.bonus
+      const bonus = bonusMap[`${wd.userId}_${wd.date}`] || wd.bonus || 0;
+      const correctAmount = (hours * rate) + bonus;
+
+      // Also sync work_days.bonus if it differs
+      if (Math.abs((wd.bonus || 0) - bonus) > 0.001) {
+        await DB.update('work_days', wd.id, { bonus });
+      }
+
+      const existing = allPayrolls.find(p => p.userId === wd.userId && p.date === wd.date);
+
+      if (!existing) {
+        await DB.add('payroll', {
+          userId: wd.userId,
+          date: wd.date,
+          hours: hours,
+          bonus: bonus,
+          amount: correctAmount,
+          status: 'pending',
+          createdAt: new Date()
+        });
+        console.log(`Created missing payment: ${wd.userId} ${wd.date} -> $${correctAmount}`);
+      } else if (existing.status === 'pending') {
+        if (Math.abs((existing.amount || 0) - correctAmount) > 0.001) {
+          await DB.update('payroll', existing.id, { hours, bonus, amount: correctAmount });
+          console.log(`Fixed payment ${existing.id}: ${wd.userId} ${wd.date} -> $${correctAmount}`);
+        }
+      }
+    }
+  } catch (e) {
+    console.error('recalcAllPending error:', e);
+  }
+}
+
+// --- PAYMENT SUMMARY (all assistants) ---
+async function loadPaymentSummary() {
+  try {
+    const rateSetting = await DB.getSetting('hourly_rate');
+    const rate = rateSetting?.value || CONFIG.hourlyRate || 5;
+
+    const allWorkDays = await DB.getAll('work_days');
+    const allPayrolls = await DB.getAll('payroll');
+    const allManualTasks = await DB.getAll('manual_tasks');
+
+    // Build bonus lookup from manual_tasks
+    const bonusMap = {};
+    allManualTasks.filter(t => t.done && t.bonus > 0).forEach(t => {
+      const key = `${t.userId}_${t.date}`;
+      bonusMap[key] = (bonusMap[key] || 0) + (t.bonus || 0);
+    });
+
+    // Get admin users to exclude them
+    const snapshot = await DB.db.collection('users').get();
+    const adminUsers = [];
+    snapshot.forEach(doc => { if (doc.data().role === 'admin') adminUsers.push(doc.id); });
+    // All completed days with hours or bonus logged, excluding admins
+    const workedDays = allWorkDays.filter(w => {
+      const bonus = bonusMap[`${w.userId}_${w.date}`] || w.bonus || 0;
+      return w.status === 'completed' && ((w.hours || 0) > 0 || bonus > 0) && !adminUsers.includes(w.userId);
+    });
+
+    // Group by userId with day details
+    const byUser = {};
+    workedDays.forEach(wd => {
+      const uid = wd.userId || 'unknown';
+      if (!byUser[uid]) byUser[uid] = { totalEarned: 0, totalPaid: 0, unpaidDays: [], paidDays: [] };
+      const hours = wd.hours || 0;
+      const bonus = bonusMap[`${wd.userId}_${wd.date}`] || wd.bonus || 0;
+      const dayAmount = (hours * rate) + bonus;
+      byUser[uid].totalEarned += dayAmount;
+
+      const payrollEntry = allPayrolls.find(p => p.userId === wd.userId && p.date === wd.date && p.status === 'paid');
+      if (payrollEntry) {
+        byUser[uid].totalPaid += (payrollEntry.amount || 0);
+        byUser[uid].paidDays.push({ date: wd.date, hours, bonus, amount: dayAmount, report: wd.report || '' });
+      } else {
+        byUser[uid].unpaidDays.push({ date: wd.date, hours, bonus, amount: dayAmount, report: wd.report || '', status: wd.status });
+      }
+    });
+
+    let grandTotalOwed = 0;
+    const userIds = Object.keys(byUser).sort();
+    userIds.forEach(uid => {
+      byUser[uid].owed = byUser[uid].totalEarned - byUser[uid].totalPaid;
+      grandTotalOwed += byUser[uid].owed;
+    });
+
+    document.getElementById('summaryTotalPending').textContent = '$' + grandTotalOwed.toFixed(2) + ' total owed';
+
+    if (userIds.length === 0) {
+      document.getElementById('paymentSummary').innerHTML = '<div class="empty-state">No work days with hours</div>';
+      return;
+    }
+
+    let html = '';
+    userIds.forEach(uid => {
+      const u = byUser[uid];
+      if (u.owed <= 0) return;
+
+      // Sort unpaid days by date descending
+      u.unpaidDays.sort((a, b) => b.date.localeCompare(a.date));
+
+      // Build day rows
+      let daysHtml = '';
+      u.unpaidDays.forEach(d => {
+        const bonusStr = d.bonus > 0 ? ` + $${d.bonus} bonus` : '';
+        const reportHtml = d.report ? `<div style="color:#888;font-size:11px;margin-top:4px;padding:6px 8px;background:#0a0a0a;border-radius:3px;white-space:pre-wrap">${escapeHtml(d.report)}</div>` : '';
+        const editId = `edit-${uid}-${d.date}`;
+        daysHtml += `<div style="padding:8px 0;border-bottom:1px solid #1a1a1a">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <span style="color:#0f0;font-family:'Courier New',monospace">${d.date}</span>
+              <span style="color:#666;font-size:11px;margin-left:8px">${d.hours}h${bonusStr}</span>
+              <span style="color:#ff0;font-weight:bold;margin-left:8px">$${d.amount.toFixed(2)}</span>
+            </div>
+            <div style="display:flex;gap:4px">
+              <button class="btn btn-sm btn-primary" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation(); payDay('${uid}','${d.date}')">Pay</button>
+              <button class="btn btn-sm" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation(); document.getElementById('${editId}').style.display = document.getElementById('${editId}').style.display === 'none' ? 'flex' : 'none'">Edit</button>
+              <button class="btn btn-sm" style="font-size:10px;padding:3px 8px;border-color:#f55;color:#f55" onclick="event.stopPropagation(); deleteDay('${uid}','${d.date}')">Del</button>
+            </div>
+          </div>
+          ${reportHtml}
+          <div id="${editId}" style="display:none;flex-wrap:wrap;gap:6px;margin-top:6px;padding:8px;background:#111;border:1px solid #333;border-radius:4px">
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;width:100%">
+              <label style="color:#666;font-size:11px">Hours:</label>
+              <input type="number" id="${editId}-hours" value="${d.hours}" step="0.5" min="0" max="24" style="width:60px;background:#000;border:1px solid #333;color:#0f0;padding:4px;font-size:12px">
+              <label style="color:#666;font-size:11px">Bonus $:</label>
+              <input type="number" id="${editId}-bonus" value="${d.bonus}" step="1" min="0" style="width:60px;background:#000;border:1px solid #333;color:#ff0;padding:4px;font-size:12px">
+            </div>
+            <div style="width:100%;margin-top:4px">
+              <textarea id="${editId}-report" style="width:100%;background:#000;border:1px solid #333;color:#999;padding:4px;font-size:11px;min-height:50px;resize:vertical">${escapeHtml(d.report)}</textarea>
+            </div>
+            <button class="btn btn-sm btn-primary" style="font-size:11px;margin-top:4px" onclick="event.stopPropagation(); saveDay('${uid}','${d.date}','${editId}')">Save</button>
+          </div>
+        </div>`;
+      });
+
+      const detailId = 'summary-detail-' + uid;
+      html += `<div style="border-bottom:1px solid #333;padding:12px 0">
+        <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="document.getElementById('${detailId}').style.display = document.getElementById('${detailId}').style.display === 'none' ? 'block' : 'none'">
+          <div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <strong style="color:#0f0;font-family:'Courier New',monospace;font-size:15px">@${uid}</strong>
+              <span style="color:#ff0;font-size:16px;font-weight:bold">$${u.owed.toFixed(2)}</span>
+            </div>
+            <div style="color:#666;font-size:11px;margin-top:3px">${u.unpaidDays.length} unpaid day${u.unpaidDays.length !== 1 ? 's' : ''} • Total earned: $${u.totalEarned.toFixed(2)} • Paid: $${u.totalPaid.toFixed(2)} • Click to expand</div>
+          </div>
+          <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); markAllPaid('${uid}')">Pay $${u.owed.toFixed(2)}</button>
+        </div>
+        <div id="${detailId}" style="display:none;margin-top:10px;padding:8px;background:#0d0d0d;border:1px solid #222;border-radius:4px;max-height:400px;overflow-y:auto">
+          ${daysHtml}
+        </div>
+      </div>`;
+    });
+
+    if (!html) {
+      html = '<div class="empty-state">All payments up to date</div>';
+    }
+
+    document.getElementById('paymentSummary').innerHTML = html;
+  } catch (e) {
+    console.error('Payment summary error:', e);
+    document.getElementById('paymentSummary').innerHTML = '<div class="empty-state">Error loading summary</div>';
+  }
+}
+
+// Pay single day
+async function payDay(assistantId, date) {
+  if (await confirmDialog(`Mark ${date} for @${assistantId} as paid?`)) {
+    try {
+      const payrolls = await DB.getAll('payroll', [
+        { field: 'userId', value: assistantId },
+        { field: 'date', value: date }
+      ]);
+      const pending = payrolls.filter(p => p.status === 'pending');
+      if (pending.length > 0) {
+        await DB.update('payroll', pending[0].id, { status: 'paid', paidAt: new Date() });
+      } else {
+        // Create paid record if none exists
+        const rateSetting = await DB.getSetting('hourly_rate');
+        const rate = rateSetting?.value || CONFIG.hourlyRate || 5;
+        const wds = await DB.getAll('work_days', [{ field: 'userId', value: assistantId }, { field: 'date', value: date }]);
+        const wd = wds[0];
+        const hours = wd?.hours || 0;
+        const bonus = await calcBonus(assistantId, date);
+        await DB.add('payroll', { userId: assistantId, date, hours, bonus, amount: (hours * rate) + bonus, status: 'paid', paidAt: new Date() });
+      }
+      toast(`${date} marked as paid`, 'success');
+      loadPaymentSummary();
+      loadPayroll();
+    } catch (e) {
+      console.error('payDay error:', e);
+      toast('Error', 'error');
+    }
+  }
+}
+
+// Delete day (remove work_day + payroll record)
+async function deleteDay(assistantId, date) {
+  if (await confirmDialog(`Delete work day ${date} for @${assistantId}? This removes the day and its payment.`)) {
+    try {
+      // Delete work_day
+      const wds = await DB.getAll('work_days', [{ field: 'userId', value: assistantId }, { field: 'date', value: date }]);
+      for (const w of wds) await DB.delete('work_days', w.id);
+      // Delete payroll
+      const payrolls = await DB.getAll('payroll', [{ field: 'userId', value: assistantId }, { field: 'date', value: date }]);
+      for (const p of payrolls) await DB.delete('payroll', p.id);
+      toast(`${date} deleted`, 'success');
+      loadPaymentSummary();
+      loadPayroll();
+      loadCalendar();
+    } catch (e) {
+      console.error('deleteDay error:', e);
+      toast('Error', 'error');
+    }
+  }
+}
+
+// Edit day (update hours, bonus, report)
+async function saveDay(assistantId, date, editId) {
+  try {
+    const hours = parseFloat(document.getElementById(editId + '-hours').value) || 0;
+    const bonus = parseFloat(document.getElementById(editId + '-bonus').value) || 0;
+    const report = document.getElementById(editId + '-report').value.trim();
+
+    const rateSetting = await DB.getSetting('hourly_rate');
+    const rate = rateSetting?.value || CONFIG.hourlyRate || 5;
+    const amount = (hours * rate) + bonus;
+
+    // Update work_day
+    const wds = await DB.getAll('work_days', [{ field: 'userId', value: assistantId }, { field: 'date', value: date }]);
+    if (wds.length > 0) {
+      await DB.update('work_days', wds[0].id, { hours, bonus, report });
+    }
+
+    // Update payroll if exists
+    const payrolls = await DB.getAll('payroll', [{ field: 'userId', value: assistantId }, { field: 'date', value: date }]);
+    const pending = payrolls.filter(p => p.status === 'pending');
+    if (pending.length > 0) {
+      await DB.update('payroll', pending[0].id, { hours, bonus, amount });
+    }
+
+    toast(`${date} updated: $${amount.toFixed(2)}`, 'success');
+    loadPaymentSummary();
+    loadPayroll();
+  } catch (e) {
+    console.error('saveDay error:', e);
+    toast('Error saving', 'error');
+  }
+}
+
+async function markAllPaid(assistantId) {
+  if (await confirmDialog(`Mark ALL pending payments for @${assistantId} as paid?`)) {
+    try {
+      const payrolls = await DB.getAll('payroll', [
+        { field: 'userId', value: assistantId },
+      ]);
+      const pending = payrolls.filter(p => p.status === 'pending');
+      for (const p of pending) {
+        await DB.update('payroll', p.id, { status: 'paid', paidAt: new Date() });
+      }
+      toast(`${pending.length} payment(s) for @${assistantId} marked as paid`, 'success');
+      loadPayroll();
+      loadPaymentSummary();
+    } catch (e) {
+      console.error('Mark all paid error:', e);
+      toast('Error marking payments', 'error');
+    }
+  }
+}
+
+// --- DATA CLEANUP & SEED (call from console: cleanAndSeed()) ---
+async function cleanAndSeed() {
+  if (!await confirmDialog('DELETE all old payroll + work_days data and create fresh data from Feb 16?')) return;
+
+  try {
+    toast('Cleaning old data...', 'info');
+
+    // 1. Delete ALL payroll records
+    const allPayrolls = await DB.getAll('payroll');
+    for (const p of allPayrolls) {
+      await DB.delete('payroll', p.id);
+    }
+    console.log(`Deleted ${allPayrolls.length} payroll records`);
+
+    // 2. Delete ALL work_days records that have hours or amounts
+    const allWorkDays = await DB.getAll('work_days');
+    for (const w of allWorkDays) {
+      await DB.delete('work_days', w.id);
+    }
+    console.log(`Deleted ${allWorkDays.length} work_days records`);
+
+    // 3. Delete ALL manual_tasks records
+    const allManualTasks = await DB.getAll('manual_tasks');
+    for (const t of allManualTasks) {
+      await DB.delete('manual_tasks', t.id);
+    }
+    console.log(`Deleted ${allManualTasks.length} manual_tasks records`);
+
+    // 4. Delete ALL daily_tasks records
+    const allDailyTasks = await DB.getAll('daily_tasks');
+    for (const t of allDailyTasks) {
+      await DB.delete('daily_tasks', t.id);
+    }
+    console.log(`Deleted ${allDailyTasks.length} daily_tasks records`);
+
+    // 5. Seed new data for "muy" from Feb 16
+    const rateSetting = await DB.getSetting('hourly_rate');
+    const rate = rateSetting?.value || CONFIG.hourlyRate || 2.5;
+
+    const seedData = [
+      { date: '2026-02-16', hours: 7, status: 'completed', report: 'Outreach + content work' },
+      { date: '2026-02-17', hours: 6, status: 'completed', report: 'Instagram DMs + follow-ups' },
+      { date: '2026-02-18', hours: 4, status: 'planned', report: '' },
+    ];
+
+    for (const day of seedData) {
+      // Create work_day
+      await DB.add('work_days', {
+        userId: 'muy',
+        date: day.date,
+        status: day.status,
+        hours: day.hours,
+        report: day.report,
+        bonus: 0,
+        createdAt: new Date()
+      });
+
+      // Create payroll for completed days
+      if (day.status === 'completed' && day.hours > 0) {
+        const amount = day.hours * rate;
+        await DB.add('payroll', {
+          userId: 'muy',
+          date: day.date,
+          hours: day.hours,
+          bonus: 0,
+          amount: amount,
+          status: 'pending',
+          createdAt: new Date()
+        });
+        console.log(`Created: ${day.date} - ${day.hours}h - $${amount}`);
+      }
+    }
+
+    toast('Done! Fresh data from Feb 16 created.', 'success');
+    loadDaily();
+  } catch (e) {
+    console.error('cleanAndSeed error:', e);
+    toast('Error: ' + e.message, 'error');
   }
 }
 
@@ -588,22 +1056,32 @@ async function loadCalendar() {
     }
     const monthLogs = logs.filter(l => l.date && l.date >= startDate && l.date <= endDate);
 
+    // Fetch manual_tasks for bonus calculation
+    const monthManualTasks = await DB.getAll('manual_tasks', [{ field: 'userId', value: userId }]);
+    const monthBonusMap = {};
+    monthManualTasks.filter(t => t.done && t.bonus > 0).forEach(t => {
+      monthBonusMap[t.date] = (monthBonusMap[t.date] || 0) + (t.bonus || 0);
+    });
+
     // Calculate month stats
     let totalHours = 0;
+    let totalBonus = 0;
     let daysWorked = 0;
     const daysData = {};
 
     monthLogs.forEach(log => {
       const dayHours = log.hours || 0;
+      const dayBonus = monthBonusMap[log.date] || log.bonus || 0;
       totalHours += dayHours;
+      totalBonus += dayBonus;
       if (log.status === 'completed') daysWorked++;
-      daysData[log.date] = { hours: dayHours, status: log.status };
+      daysData[log.date] = { hours: dayHours, status: log.status, bonus: dayBonus };
     });
 
     totalHours = Math.round(totalHours * 10) / 10;
     const rateSetting = await DB.getSetting('hourly_rate');
     const rate = rateSetting?.value || CONFIG.hourlyRate || 5;
-    const earned = totalHours * rate;
+    const earned = (totalHours * rate) + totalBonus;
 
     document.getElementById('monthHours').textContent = totalHours + 'h';
     document.getElementById('monthEarned').textContent = '$' + earned.toFixed(2);
@@ -664,7 +1142,6 @@ async function loadCalendar() {
 
       for (const log of sortedLogs.slice(0, 20)) {
         const dayHours = log.hours || 0;
-        const dayEarned = (dayHours * rate).toFixed(2);
         const reportPreview = log.report ? log.report.substring(0, 80) + (log.report.length > 80 ? '...' : '') : '';
 
         // Get tasks for this day (deduplicated)
@@ -673,6 +1150,7 @@ async function loadCalendar() {
 
         // Calculate bonus
         const dayBonus = dayManualTasks.filter(t => t.done && t.bonus > 0).reduce((sum, t) => sum + (t.bonus || 0), 0);
+        const dayEarned = ((dayHours * rate) + dayBonus).toFixed(2);
 
         // Build tasks HTML (deduplicate by taskId/name)
         let tasksHtml = '';
@@ -1351,6 +1829,7 @@ async function loadOutreach() {
   await loadOutreachAccounts();
   await loadWarmupGuides();
   await loadOfBombex();
+  await loadModelOutreach();
   await loadOpeners();
   await loadFollowups();
   await loadScripts();
@@ -1374,6 +1853,7 @@ async function loadOutreachAccounts() {
   let tw = await DB.getAccounts('twitter');
   let wc = await DB.getAccounts('webcam');
   let of = await DB.getAccounts('onlyfans');
+  let tk = await DB.getAccounts('tiktok');
   console.log('📋 OnlyFans accounts loaded:', of.length, of);
 
   // Apply IG filters
@@ -1420,14 +1900,26 @@ async function loadOutreachAccounts() {
   if (ofLocation) of = of.filter(a => a.location === ofLocation);
   if (ofStatus !== '') of = of.filter(a => String(a.healthy) === ofStatus);
 
+  // Apply TK filters
+  const tkUsername = document.getElementById('tkFilterUsername')?.value?.toLowerCase() || '';
+  const tkDevice = document.getElementById('tkFilterDevice')?.value?.toLowerCase() || '';
+  const tkLocation = document.getElementById('tkFilterLocation')?.value || '';
+  const tkStatus = document.getElementById('tkFilterStatus')?.value || '';
+
+  if (tkUsername) tk = tk.filter(a => a.username.toLowerCase().includes(tkUsername));
+  if (tkDevice) tk = tk.filter(a => (a.deviceName || '').toLowerCase().includes(tkDevice));
+  if (tkLocation) tk = tk.filter(a => a.location === tkLocation);
+  if (tkStatus !== '') tk = tk.filter(a => String(a.healthy) === tkStatus);
+
   document.getElementById('igList').innerHTML = renderAccounts(ig);
   document.getElementById('twList').innerHTML = renderAccounts(tw);
   document.getElementById('wcList').innerHTML = renderWebcamAccounts(wc);
   document.getElementById('ofList').innerHTML = renderWebcamAccounts(of);
+  document.getElementById('tkList').innerHTML = renderAccounts(tk);
 }
 
 async function loadOfBombex() {
-  const logs = await DB.getOfBombexLogs();
+  const logs = await DB.getOutseekerLogs();
   const latest = logs[0];
   if (latest) {
     document.getElementById('osActive').textContent = latest.activeAccounts || 0;
@@ -1479,7 +1971,7 @@ async function loadOfBombex() {
       ${l.notes ? `<div style="margin-top:8px;padding:6px 8px;background:#0a0a0a;border:1px solid #222;border-radius:2px;font-size:10px;color:#999"><strong style="color:#666;font-size:9px;margin-right:5px">Notes:</strong>${l.notes}</div>` : ''}
     </div>`;
   });
-  document.getElementById('osLog').innerHTML = osHtml || '<div class="empty-state">No outseeker logs</div>';
+  document.getElementById('osLog').innerHTML = osHtml || '<div class="empty-state">No OFautopilot logs</div>';
 }
 
 async function loadOpeners() {
@@ -1553,7 +2045,7 @@ async function renderOpenerCard(s) {
 
   // Platform badges
   const platformBadges = platforms.map(p =>
-    `<span class="status status-${p === 'instagram' ? 'healthy' : p === 'twitter' ? 'pending' : 'live'}">${p}</span>`
+    `<span class="status status-${p === 'instagram' ? 'healthy' : p === 'twitter' ? 'pending' : p === 'onlyfans' ? 'expired' : p === 'tiktok' ? 'healthy' : 'live'}">${p}</span>`
   ).join(' ');
 
   return `<div class="script-box ${s.active ? 'selected' : ''}" onclick="copyToClipboard('${encodeURIComponent(s.text)}')">
@@ -1646,7 +2138,7 @@ async function renderFollowupCard(s) {
 
   // Platform badges
   const platformBadges = platforms.map(p =>
-    `<span class="status status-${p === 'instagram' ? 'healthy' : p === 'twitter' ? 'pending' : 'live'}">${p}</span>`
+    `<span class="status status-${p === 'instagram' ? 'healthy' : p === 'twitter' ? 'pending' : p === 'onlyfans' ? 'expired' : p === 'tiktok' ? 'healthy' : 'live'}">${p}</span>`
   ).join(' ');
 
   return `<div class="script-box ${s.active ? 'selected' : ''}" onclick="copyToClipboard('${encodeURIComponent(s.text)}')">
@@ -1717,7 +2209,7 @@ async function loadScripts() {
 
     // Platform badges
     const platformBadges = platforms.map(p =>
-      `<span class="status status-${p === 'instagram' ? 'healthy' : p === 'twitter' ? 'pending' : 'live'}" style="font-size:10px">${p}</span>`
+      `<span class="status status-${p === 'instagram' ? 'healthy' : p === 'twitter' ? 'pending' : p === 'onlyfans' ? 'expired' : p === 'tiktok' ? 'healthy' : 'live'}" style="font-size:10px">${p}</span>`
     ).join(' ');
 
     html += `<div class="script-box" onclick="copyToClipboard('${encodeURIComponent(s.text)}')">
@@ -2510,6 +3002,284 @@ async function deleteModel(id) {
     toast('Model deleted', 'success');
     loadModels();
   }
+}
+
+// ============================================
+// CHATTERS
+// ============================================
+
+async function loadChatters() {
+  try {
+    const all = await DB.getAll('chatters', [{ field: 'userId', value: userId }]);
+    const applying = all.filter(c => c.status === 'applying');
+    const approved = all.filter(c => c.status === 'approved');
+    const rejected = all.filter(c => c.status === 'rejected');
+
+    document.getElementById('chatterApplying').innerHTML = renderChatters(applying, 'applying') || '<div class="empty-state">No applicants</div>';
+    document.getElementById('chatterApproved').innerHTML = renderChatters(approved, 'approved') || '<div class="empty-state">No approved chatters</div>';
+    document.getElementById('chatterRejected').innerHTML = renderChatters(rejected, 'rejected') || '<div class="empty-state">No rejected chatters</div>';
+  } catch (e) {
+    console.error('Chatters load error:', e);
+  }
+}
+
+function renderChatters(chatters, tab) {
+  if (!chatters.length) return '';
+
+  const testFields = [
+    { key: 'englishQuality', label: 'English Quality' },
+    { key: 'speedtest', label: 'Speedtest' },
+    { key: 'computerStress', label: 'PC Stress' },
+    { key: 'typingTest', label: 'Typing' },
+    { key: 'iqTest', label: 'IQ' },
+    { key: 'eqTest', label: 'EQ' },
+    { key: 'empathyTest', label: 'Empathy' },
+    { key: 'englishTest', label: 'English Test' }
+  ];
+
+  return chatters.map(c => {
+    const testsHtml = testFields.map(t => {
+      const val = c[t.key] || '';
+      if (!val) return '';
+      const color = val.toLowerCase().includes('fail') || val.toLowerCase().includes('bad') || val.toLowerCase().includes('low') ? '#f55' : '#0f0';
+      return `<div style="display:flex;justify-content:space-between;font-size:10px;padding:2px 0"><span style="color:#999">${t.label}:</span><span style="color:${color}">${val}</span></div>`;
+    }).join('');
+
+    const statusActions = tab === 'applying'
+      ? `<button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px;background:#1b5e20;color:#fff" onclick="updateChatterStatus('${c.id}','approved')">Approve</button>
+         <button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px;background:#c62828;color:#fff" onclick="updateChatterStatus('${c.id}','rejected')">Reject</button>`
+      : tab === 'approved'
+      ? `<button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px;background:#c62828;color:#fff" onclick="updateChatterStatus('${c.id}','rejected')">Reject</button>`
+      : `<button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px;background:#1b5e20;color:#fff" onclick="updateChatterStatus('${c.id}','approved')">Approve</button>`;
+
+    return `<div class="card" style="background:#111;border:1px solid #333;border-radius:6px;padding:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <strong style="color:#0f0;font-size:13px">${c.name || 'Unnamed'}</strong>
+        <span style="font-size:10px;color:#999">${c.telegram ? '@' + c.telegram : ''}</span>
+      </div>
+      ${c.info ? `<div style="font-size:10px;color:#888;margin-bottom:8px">${c.info}</div>` : ''}
+      ${testsHtml ? `<div style="margin-bottom:8px;padding:6px;background:#0a0a0a;border-radius:4px">${testsHtml}</div>` : ''}
+      <div style="display:flex;gap:5px;margin-top:8px">
+        <button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px" onclick="modal('chatter',${JSON.stringify(c).replace(/"/g, '&quot;')})">Edit</button>
+        ${statusActions}
+        <button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px;background:#c62828;color:#fff" onclick="deleteChatter('${c.id}')">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function saveChatter() {
+  const editId = document.getElementById('chatterEditId')?.value;
+  const name = document.getElementById('chatterName')?.value?.trim();
+
+  if (!name) {
+    toast('Name is required', 'error');
+    return;
+  }
+
+  const data = {
+    userId: userId,
+    name: name,
+    telegram: document.getElementById('chatterTelegram')?.value?.trim() || '',
+    info: document.getElementById('chatterInfo')?.value?.trim() || '',
+    status: document.getElementById('chatterStatus')?.value || 'applying',
+    englishQuality: document.getElementById('chatterEnglishQuality')?.value?.trim() || '',
+    speedtest: document.getElementById('chatterSpeedtest')?.value?.trim() || '',
+    computerStress: document.getElementById('chatterComputerStress')?.value?.trim() || '',
+    typingTest: document.getElementById('chatterTypingTest')?.value?.trim() || '',
+    iqTest: document.getElementById('chatterIqTest')?.value?.trim() || '',
+    eqTest: document.getElementById('chatterEqTest')?.value?.trim() || '',
+    empathyTest: document.getElementById('chatterEmpathyTest')?.value?.trim() || '',
+    englishTest: document.getElementById('chatterEnglishTest')?.value?.trim() || ''
+  };
+
+  if (editId) {
+    await DB.update('chatters', editId, data);
+    toast('Chatter updated', 'success');
+  } else {
+    data.createdAt = new Date().toISOString();
+    await DB.add('chatters', data);
+    toast('Chatter added', 'success');
+  }
+
+  closeModal();
+  loadChatters();
+}
+
+async function deleteChatter(id) {
+  if (await confirmDialog('Delete this chatter? This cannot be undone.')) {
+    await DB.delete('chatters', id);
+    toast('Chatter deleted', 'success');
+    loadChatters();
+  }
+}
+
+async function updateChatterStatus(id, status) {
+  await DB.update('chatters', id, { status: status });
+  toast(`Chatter ${status}`, 'success');
+  loadChatters();
+}
+
+// ============================================
+// SPY — Agency Applies
+// ============================================
+
+async function loadSpy() {
+  try {
+    let applies = await DB.getAll('spy_applies', [{ field: 'userId', value: userId }]);
+    applies.sort((a, b) => (b.dateApplied || '').localeCompare(a.dateApplied || ''));
+
+    const applying = applies.filter(a => a.status === 'applying');
+    const accepted = applies.filter(a => a.status === 'accepted');
+    const rejected = applies.filter(a => a.status === 'rejected');
+
+    // Stats
+    document.getElementById('spyTotal').textContent = applies.length;
+    document.getElementById('spyAccepted').textContent = accepted.length;
+    const totalFans = applies.reduce((s, a) => {
+      const models = a.models || [];
+      return s + models.reduce((ms, m) => ms + (parseInt(m.fans) || 0), 0);
+    }, 0);
+    document.getElementById('spyTotalFans').textContent = totalFans.toLocaleString();
+    document.getElementById('spyImported').textContent = applies.filter(a => a.importedToAutopilot).length;
+
+    document.getElementById('spyApplyingList').innerHTML = renderSpyCards(applying) || '<div class="empty-state">No active applies</div>';
+    document.getElementById('spyAcceptedList').innerHTML = renderSpyCards(accepted) || '<div class="empty-state">No accepted applies</div>';
+    document.getElementById('spyRejectedList').innerHTML = renderSpyCards(rejected) || '<div class="empty-state">No rejected applies</div>';
+  } catch (e) {
+    console.error('loadSpy error:', e);
+  }
+}
+
+function renderSpyCards(applies) {
+  if (!applies.length) return '';
+  return applies.map(a => {
+    const models = a.models || [];
+    const totalFans = models.reduce((s, m) => s + (parseInt(m.fans) || 0), 0);
+
+    const badges = [
+      a.hadInterview ? '<span style="background:#1b5e20;color:#fff;padding:1px 6px;border-radius:2px;font-size:9px">Interview</span>' : '<span style="background:#333;color:#666;padding:1px 6px;border-radius:2px;font-size:9px">Interview</span>',
+      a.gotLogins ? '<span style="background:#1b5e20;color:#fff;padding:1px 6px;border-radius:2px;font-size:9px">Logins</span>' : '<span style="background:#333;color:#666;padding:1px 6px;border-radius:2px;font-size:9px">Logins</span>',
+      a.accessToFans ? '<span style="background:#1b5e20;color:#fff;padding:1px 6px;border-radius:2px;font-size:9px">Fans Access</span>' : '<span style="background:#333;color:#666;padding:1px 6px;border-radius:2px;font-size:9px">Fans Access</span>',
+      a.importedToAutopilot ? '<span style="background:#0d47a1;color:#fff;padding:1px 6px;border-radius:2px;font-size:9px">Imported</span>' : '<span style="background:#333;color:#666;padding:1px 6px;border-radius:2px;font-size:9px">Imported</span>'
+    ].join(' ');
+
+    const modelsHtml = models.length ? `<div style="margin-top:8px;padding:6px;background:#0a0a0a;border-radius:3px">
+      <div style="font-size:9px;color:#666;margin-bottom:4px">Models (${models.length}):</div>
+      ${models.map(m => `<div style="display:flex;justify-content:space-between;font-size:10px;padding:2px 0;border-bottom:1px solid #1a1a1a">
+        <span style="color:#0f0">@${m.username || '?'}</span>
+        <span style="color:#ff0">${m.fans ? parseInt(m.fans).toLocaleString() + ' fans' : '—'}</span>
+      </div>`).join('')}
+      ${totalFans ? `<div style="display:flex;justify-content:space-between;font-size:10px;padding:3px 0 0;margin-top:3px;border-top:1px solid #333"><strong style="color:#999">Total</strong><strong style="color:#ff0">${totalFans.toLocaleString()} fans</strong></div>` : ''}
+    </div>` : '';
+
+    return `<div class="card" style="background:#111;border:1px solid #333;border-radius:6px;padding:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <strong style="color:#0f0;font-size:13px">${a.agency || 'Unknown Agency'}</strong>
+        <span style="font-size:10px;color:#999">${a.dateApplied || '—'}</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:8px">${badges}</div>
+      ${a.notes ? `<div style="font-size:10px;color:#888;margin-bottom:6px">${a.notes}</div>` : ''}
+      ${modelsHtml}
+      <div style="display:flex;gap:5px;margin-top:10px">
+        <button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px" onclick="editSpyApply('${a.id}')">Edit</button>
+        ${a.status === 'applying' ? `<button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px;background:#1b5e20;color:#fff" onclick="updateSpyStatus('${a.id}','accepted')">Accept</button>
+        <button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px;background:#c62828;color:#fff" onclick="updateSpyStatus('${a.id}','rejected')">Reject</button>` : ''}
+        ${a.status === 'accepted' ? `<button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px;background:#c62828;color:#fff" onclick="updateSpyStatus('${a.id}','rejected')">Reject</button>` : ''}
+        ${a.status === 'rejected' ? `<button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px;background:#1b5e20;color:#fff" onclick="updateSpyStatus('${a.id}','accepted')">Accept</button>` : ''}
+        <button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px;background:#c62828;color:#fff" onclick="deleteSpyApply('${a.id}')">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function saveSpyApply() {
+  const editId = document.getElementById('spyEditId')?.value;
+  const agency = document.getElementById('spyAgency')?.value?.trim();
+
+  if (!agency) {
+    toast('Agency name is required', 'error');
+    return;
+  }
+
+  // Collect models from dynamic rows
+  const rows = document.querySelectorAll('.spy-model-row');
+  const models = [];
+  rows.forEach(row => {
+    const username = row.querySelector('.spy-model-username')?.value?.trim();
+    if (!username) return;
+    models.push({
+      username: username,
+      fans: parseInt(row.querySelector('.spy-model-fans')?.value) || 0
+    });
+  });
+
+  const data = {
+    userId: userId,
+    agency: agency,
+    dateApplied: document.getElementById('spyDate')?.value || new Date().toISOString().split('T')[0],
+    status: document.getElementById('spyStatus')?.value || 'applying',
+    hadInterview: document.getElementById('spyInterview')?.checked || false,
+    gotLogins: document.getElementById('spyLogins')?.checked || false,
+    accessToFans: document.getElementById('spyFansAccess')?.checked || false,
+    importedToAutopilot: document.getElementById('spyImportedAP')?.checked || false,
+    models: models,
+    notes: document.getElementById('spyNotes')?.value?.trim() || ''
+  };
+
+  if (editId) {
+    await DB.update('spy_applies', editId, data);
+    toast('Apply updated', 'success');
+  } else {
+    data.createdAt = new Date().toISOString();
+    await DB.add('spy_applies', data);
+    toast('Apply added', 'success');
+  }
+
+  closeModal();
+  loadSpy();
+}
+
+async function editSpyApply(id) {
+  try {
+    const apply = await DB.get('spy_applies', id);
+    if (!apply) {
+      toast('Apply not found', 'error');
+      return;
+    }
+    if (!apply.id) apply.id = id;
+    modal('spyApply', apply);
+  } catch (e) {
+    console.error('editSpyApply error:', e);
+    toast('Error loading apply', 'error');
+  }
+}
+
+async function deleteSpyApply(id) {
+  if (await confirmDialog('Delete this apply? This cannot be undone.')) {
+    await DB.delete('spy_applies', id);
+    toast('Apply deleted', 'success');
+    loadSpy();
+  }
+}
+
+async function updateSpyStatus(id, status) {
+  await DB.update('spy_applies', id, { status: status });
+  toast(`Apply ${status}`, 'success');
+  loadSpy();
+}
+
+function addSpyModelRow(model) {
+  const container = document.getElementById('spyModelsContainer');
+  const row = document.createElement('div');
+  row.className = 'spy-model-row';
+  row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:6px';
+  row.innerHTML = `
+    <input type="text" class="form-input spy-model-username" placeholder="@username" value="${model?.username || ''}" style="flex:2">
+    <input type="number" class="form-input spy-model-fans" placeholder="Fans count" min="0" value="${model?.fans || ''}" style="flex:1">
+    <button class="btn btn-sm" style="font-size:10px;padding:4px 8px;background:#c62828;color:#fff;flex:0 0 auto" onclick="this.closest('.spy-model-row').remove()">X</button>
+  `;
+  container.appendChild(row);
 }
 
 // ============================================
@@ -3474,7 +4244,7 @@ async function modal(type, data) {
         ${data !== 'script' ? `
         <div class="form-group">
           <label class="form-label">Platforms (select multiple):</label>
-          <div style="display:flex;gap:15px;padding:10px;background:#0a0a0a;border:1px solid #333;border-radius:3px">
+          <div style="display:flex;gap:15px;flex-wrap:wrap;padding:10px;background:#0a0a0a;border:1px solid #333;border-radius:3px">
             <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
               <input type="checkbox" class="scriptPlatCheck" value="instagram" style="width:18px;height:18px">
               <span>Instagram</span>
@@ -3486,6 +4256,14 @@ async function modal(type, data) {
             <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
               <input type="checkbox" class="scriptPlatCheck" value="webcam" style="width:18px;height:18px">
               <span>Webcam</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+              <input type="checkbox" class="scriptPlatCheck" value="onlyfans" style="width:18px;height:18px">
+              <span>OnlyFans</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+              <input type="checkbox" class="scriptPlatCheck" value="tiktok" style="width:18px;height:18px">
+              <span>TikTok</span>
             </label>
           </div>
         </div>
@@ -3526,7 +4304,7 @@ async function modal(type, data) {
         </div>
         <div class="form-group">
           <label class="form-label">Platforms (select multiple):</label>
-          <div style="display:flex;gap:15px;padding:10px;background:#0a0a0a;border:1px solid #333;border-radius:3px">
+          <div style="display:flex;gap:15px;flex-wrap:wrap;padding:10px;background:#0a0a0a;border:1px solid #333;border-radius:3px">
             <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
               <input type="checkbox" class="scriptPlatCheck" value="instagram" style="width:18px;height:18px">
               <span>Instagram</span>
@@ -3538,6 +4316,14 @@ async function modal(type, data) {
             <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
               <input type="checkbox" class="scriptPlatCheck" value="webcam" style="width:18px;height:18px">
               <span>Webcam</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+              <input type="checkbox" class="scriptPlatCheck" value="onlyfans" style="width:18px;height:18px">
+              <span>OnlyFans</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+              <input type="checkbox" class="scriptPlatCheck" value="tiktok" style="width:18px;height:18px">
+              <span>TikTok</span>
             </label>
           </div>
         </div>
@@ -3583,7 +4369,7 @@ async function modal(type, data) {
         ${scriptType !== 'script' ? `
         <div class="form-group">
           <label class="form-label">Platforms (select multiple):</label>
-          <div style="display:flex;gap:15px;padding:10px;background:#0a0a0a;border:1px solid #333;border-radius:3px">
+          <div style="display:flex;gap:15px;flex-wrap:wrap;padding:10px;background:#0a0a0a;border:1px solid #333;border-radius:3px">
             <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
               <input type="checkbox" class="scriptPlatCheck" value="instagram" ${platforms.includes('instagram') ? 'checked' : ''} style="width:18px;height:18px">
               <span>Instagram</span>
@@ -3595,6 +4381,14 @@ async function modal(type, data) {
             <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
               <input type="checkbox" class="scriptPlatCheck" value="webcam" ${platforms.includes('webcam') ? 'checked' : ''} style="width:18px;height:18px">
               <span>Webcam</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+              <input type="checkbox" class="scriptPlatCheck" value="onlyfans" ${platforms.includes('onlyfans') ? 'checked' : ''} style="width:18px;height:18px">
+              <span>OnlyFans</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+              <input type="checkbox" class="scriptPlatCheck" value="tiktok" ${platforms.includes('tiktok') ? 'checked' : ''} style="width:18px;height:18px">
+              <span>TikTok</span>
             </label>
           </div>
         </div>
@@ -3635,7 +4429,7 @@ async function modal(type, data) {
         </div>
         <div class="form-group">
           <label class="form-label">Platforms (select multiple):</label>
-          <div style="display:flex;gap:15px;padding:10px;background:#0a0a0a;border:1px solid #333;border-radius:3px">
+          <div style="display:flex;gap:15px;flex-wrap:wrap;padding:10px;background:#0a0a0a;border:1px solid #333;border-radius:3px">
             <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
               <input type="checkbox" class="scriptPlatCheck" value="instagram" ${platforms.includes('instagram') ? 'checked' : ''} style="width:18px;height:18px">
               <span>Instagram</span>
@@ -3647,6 +4441,14 @@ async function modal(type, data) {
             <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
               <input type="checkbox" class="scriptPlatCheck" value="webcam" ${platforms.includes('webcam') ? 'checked' : ''} style="width:18px;height:18px">
               <span>Webcam</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+              <input type="checkbox" class="scriptPlatCheck" value="onlyfans" ${platforms.includes('onlyfans') ? 'checked' : ''} style="width:18px;height:18px">
+              <span>OnlyFans</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+              <input type="checkbox" class="scriptPlatCheck" value="tiktok" ${platforms.includes('tiktok') ? 'checked' : ''} style="width:18px;height:18px">
+              <span>TikTok</span>
             </label>
           </div>
         </div>
@@ -3903,7 +4705,7 @@ async function modal(type, data) {
       break;
 
     case 'outseeker':
-      title.textContent = data ? 'Edit OfBombex Log' : 'Log OfBombex Data';
+      title.textContent = data ? 'Edit OFautopilot Log' : 'Log OFautopilot Data';
       const isEditOfBombex = data && data.id;
       body.innerHTML = `
         ${isEditOfBombex ? `<input type="hidden" id="osEditId" value="${data.id}">` : ''}
@@ -3937,6 +4739,33 @@ async function modal(type, data) {
         </div>
         <button class="btn btn-primary" onclick="saveOfBombex()">${isEditOfBombex ? 'Update' : 'Save'} Data</button>
       `;
+      break;
+
+    case 'modelOutreach':
+      const isEditMO = data && data.id;
+      title.textContent = isEditMO ? 'Edit Model Outreach Log' : 'Log Model Outreach';
+      document.getElementById('mBox').className = 'modal-box large';
+      body.innerHTML = `
+        ${isEditMO ? `<input type="hidden" id="moEditId" value="${data.id}">` : ''}
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <label class="form-label" style="margin:0">Models</label>
+          <button class="btn btn-sm btn-primary" style="font-size:11px" onclick="addModelOutreachRow()">+ Add Model</button>
+        </div>
+        <div id="moModelsContainer"></div>
+        <div class="form-group" style="margin-top:12px">
+          <label class="form-label">Notes (optional):</label>
+          <textarea class="form-textarea" id="moNotes" style="min-height:60px" placeholder="Notes about today's outreach...">${isEditMO ? data.notes || '' : ''}</textarea>
+        </div>
+        <button class="btn btn-primary" onclick="saveModelOutreach()">${isEditMO ? 'Update' : 'Save'} Data</button>
+      `;
+      // Populate model rows after DOM is ready
+      setTimeout(() => {
+        if (isEditMO && data.models && data.models.length) {
+          data.models.forEach(m => addModelOutreachRow(m));
+        } else {
+          addModelOutreachRow();
+        }
+      }, 10);
       break;
 
     case 'logComm':
@@ -4516,6 +5345,155 @@ async function modal(type, data) {
           </div>
         </div>
       `;
+      break;
+
+    case 'chatter':
+      const isEditChatter = data && data.id;
+      title.textContent = isEditChatter ? `Edit ${data.name}` : 'Add New Chatter';
+      document.getElementById('mBox').className = 'modal-box large';
+      body.innerHTML = `
+        ${isEditChatter ? `<input type="hidden" id="chatterEditId" value="${data.id}">` : ''}
+
+        <div style="margin-bottom:20px;padding-bottom:20px;border-bottom:2px solid #333">
+          <h3 style="color:#0f0;margin-bottom:15px">Basic Info</h3>
+          <div class="grid grid-2">
+            <div class="form-group">
+              <label class="form-label">Name:</label>
+              <input type="text" class="form-input" id="chatterName" value="${isEditChatter ? data.name || '' : ''}">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Telegram Username:</label>
+              <input type="text" class="form-input" id="chatterTelegram" placeholder="without @" value="${isEditChatter ? data.telegram || '' : ''}">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Info / Notes:</label>
+            <textarea class="form-textarea" id="chatterInfo" style="min-height:60px" placeholder="Any notes about this applicant...">${isEditChatter ? data.info || '' : ''}</textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Status:</label>
+            <select class="form-select" id="chatterStatus">
+              <option value="applying" ${!isEditChatter || data.status === 'applying' ? 'selected' : ''}>Applying</option>
+              <option value="approved" ${isEditChatter && data.status === 'approved' ? 'selected' : ''}>Approved</option>
+              <option value="rejected" ${isEditChatter && data.status === 'rejected' ? 'selected' : ''}>Rejected</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <h3 style="color:#0f0;margin-bottom:15px">Test Results</h3>
+          <div class="grid grid-2" style="gap:12px">
+            <div class="form-group" style="margin:0">
+              <label class="form-label">English Quality <span style="color:#666;font-size:10px">— Speaking good, Clearly speaking</span></label>
+              <input type="text" class="form-input" id="chatterEnglishQuality" placeholder="e.g. Good, Average, Bad" value="${isEditChatter ? data.englishQuality || '' : ''}">
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Speedtest <a href="https://www.speedtest.net" target="_blank" style="color:#0af;font-size:10px">speedtest.net</a> <span style="color:#666;font-size:10px">— 100mbps+</span></label>
+              <input type="text" class="form-input" id="chatterSpeedtest" placeholder="e.g. 150mbps" value="${isEditChatter ? data.speedtest || '' : ''}">
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Computer Stress <a href="https://mprep.info/gpu/" target="_blank" style="color:#0af;font-size:10px">mprep.info/gpu/</a> <span style="color:#666;font-size:10px">— CPU&GPU good</span></label>
+              <input type="text" class="form-input" id="chatterComputerStress" placeholder="e.g. CPU Good, GPU Good" value="${isEditChatter ? data.computerStress || '' : ''}">
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Typing Test <a href="https://www.typingtest.com" target="_blank" style="color:#0af;font-size:10px">typingtest.com</a> <span style="color:#666;font-size:10px">— 50-60wpm+</span></label>
+              <input type="text" class="form-input" id="chatterTypingTest" placeholder="e.g. 65wpm" value="${isEditChatter ? data.typingTest || '' : ''}">
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">IQ Test <a href="https://brght.org" target="_blank" style="color:#0af;font-size:10px">brght.org</a> <span style="color:#666;font-size:10px">— 100+</span></label>
+              <input type="text" class="form-input" id="chatterIqTest" placeholder="e.g. 115" value="${isEditChatter ? data.iqTest || '' : ''}">
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">EQ Test <a href="https://www.mindtools.com/a3tbat1/how-emotionally-intelligent-are-you" target="_blank" style="color:#0af;font-size:10px">mindtools.com</a> <span style="color:#666;font-size:10px">— 75-85/100+</span></label>
+              <input type="text" class="form-input" id="chatterEqTest" placeholder="e.g. 82/100" value="${isEditChatter ? data.eqTest || '' : ''}">
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Empathy Test <a href="https://psychology-tools.com/test/empathy-quotient" target="_blank" style="color:#0af;font-size:10px">psychology-tools.com</a> <span style="color:#666;font-size:10px">— 50-60/80+</span></label>
+              <input type="text" class="form-input" id="chatterEmpathyTest" placeholder="e.g. 58/80" value="${isEditChatter ? data.empathyTest || '' : ''}">
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">English Test <a href="https://www.cambridgeenglish.org/test-your-english/general-english/" target="_blank" style="color:#0af;font-size:10px">cambridgeenglish.org</a> <span style="color:#666;font-size:10px">— good + on call</span></label>
+              <input type="text" class="form-input" id="chatterEnglishTest" placeholder="e.g. B2 level" value="${isEditChatter ? data.englishTest || '' : ''}">
+            </div>
+          </div>
+        </div>
+
+        <button class="btn btn-primary" style="margin-top:20px" onclick="saveChatter()">Save Chatter</button>
+      `;
+      break;
+
+    case 'spyApply':
+      const isEditSpy = data && data.id;
+      title.textContent = isEditSpy ? `Edit Apply — ${data.agency}` : 'Add New Apply';
+      document.getElementById('mBox').className = 'modal-box large';
+      body.innerHTML = `
+        ${isEditSpy ? `<input type="hidden" id="spyEditId" value="${data.id}">` : ''}
+
+        <div class="grid grid-2" style="margin-bottom:15px">
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Agency Name:</label>
+            <input type="text" class="form-input" id="spyAgency" placeholder="e.g. ModelHub Agency" value="${isEditSpy ? data.agency || '' : ''}">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Date Applied:</label>
+            <input type="date" class="form-input" id="spyDate" value="${isEditSpy ? data.dateApplied || '' : new Date().toISOString().split('T')[0]}">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Status:</label>
+          <select class="form-select" id="spyStatus">
+            <option value="applying" ${!isEditSpy || data.status === 'applying' ? 'selected' : ''}>Applying</option>
+            <option value="accepted" ${isEditSpy && data.status === 'accepted' ? 'selected' : ''}>Accepted</option>
+            <option value="rejected" ${isEditSpy && data.status === 'rejected' ? 'selected' : ''}>Rejected</option>
+          </select>
+        </div>
+
+        <div style="padding:12px;background:#0a0a0a;border:1px solid #333;border-radius:4px;margin-bottom:15px">
+          <div style="font-size:11px;color:#999;margin-bottom:10px">Progress Tracking</div>
+          <div style="display:flex;flex-wrap:wrap;gap:15px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" id="spyInterview" style="width:18px;height:18px" ${isEditSpy && data.hadInterview ? 'checked' : ''}>
+              <span>Had Interview</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" id="spyLogins" style="width:18px;height:18px" ${isEditSpy && data.gotLogins ? 'checked' : ''}>
+              <span>Got Logins</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" id="spyFansAccess" style="width:18px;height:18px" ${isEditSpy && data.accessToFans ? 'checked' : ''}>
+              <span>Access to Fans</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" id="spyImportedAP" style="width:18px;height:18px" ${isEditSpy && data.importedToAutopilot ? 'checked' : ''}>
+              <span>Imported to OFautopilot</span>
+            </label>
+          </div>
+        </div>
+
+        <div style="margin-bottom:15px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <label class="form-label" style="margin:0">Models / Accounts</label>
+            <button class="btn btn-sm btn-primary" style="font-size:11px" onclick="addSpyModelRow()">+ Add Model</button>
+          </div>
+          <div id="spyModelsContainer"></div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Notes:</label>
+          <textarea class="form-textarea" id="spyNotes" style="min-height:60px" placeholder="Notes, observations, login details...">${isEditSpy ? data.notes || '' : ''}</textarea>
+        </div>
+
+        <button class="btn btn-primary" onclick="saveSpyApply()">Save Apply</button>
+      `;
+      // Populate model rows after DOM ready
+      setTimeout(() => {
+        if (isEditSpy && data.models && data.models.length) {
+          data.models.forEach(m => addSpyModelRow(m));
+        } else {
+          addSpyModelRow();
+        }
+      }, 10);
       break;
 
   }
@@ -5234,7 +6212,7 @@ async function saveOfBombex() {
   await DB.set('outseeker_logs', logId, data);
 
   closeModal();
-  toast(editId ? 'OfBombex log updated!' : 'OfBombex data saved!', 'success');
+  toast(editId ? 'OFautopilot log updated!' : 'OFautopilot data saved!', 'success');
   loadOfBombex();
 }
 
@@ -5254,13 +6232,186 @@ async function editOfBombex(logId) {
 }
 
 async function delOfBombex(logId) {
-  if (await confirmDialog('Delete this OfBombex log?')) {
+  if (await confirmDialog('Delete this OFautopilot log?')) {
     try {
       await DB.delete('outseeker_logs', logId);
       toast('Log deleted', 'success');
       loadOfBombex();
     } catch (e) {
       console.error('delOfBombex error:', e);
+      toast('Error deleting log', 'error');
+    }
+  }
+}
+
+// ============================================
+// OFautopilot MODELS OUTREACH
+// ============================================
+
+async function loadModelOutreach() {
+  try {
+    // Fetch without orderBy to avoid composite index requirement, sort client-side
+    let logs = await DB.getAll('model_outreach_logs', [{ field: 'userId', value: userId }]);
+    logs.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    logs = logs.slice(0, 30);
+
+    const latest = logs[0];
+    if (latest && latest.models) {
+      document.getElementById('moTotalModels').textContent = latest.models.length;
+      document.getElementById('moTotalOutreached').textContent = latest.models.reduce((s, m) => s + (m.outreachedToday || 0), 0);
+      document.getElementById('moTotalRemaining').textContent = latest.models.reduce((s, m) => s + (m.collectionRemaining || 0), 0);
+    } else {
+      document.getElementById('moTotalModels').textContent = '0';
+      document.getElementById('moTotalOutreached').textContent = '0';
+      document.getElementById('moTotalRemaining').textContent = '0';
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    let html = '';
+    logs.forEach(l => {
+      const isToday = l.date === today;
+      const models = l.models || [];
+      const totalOut = models.reduce((s, m) => s + (m.outreachedToday || 0), 0);
+      const totalRem = models.reduce((s, m) => s + (m.collectionRemaining || 0), 0);
+      const totalAcc = models.reduce((s, m) => s + (m.activeAccounts || 0), 0);
+      const logId = l.id;
+
+      html += `<div class="list-item" style="${isToday ? 'background:#001a00;border-left:3px solid #0f0' : ''};padding:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:15px;margin-bottom:${models.length ? '8' : '0'}px">
+          <div style="flex:0 0 auto">
+            <div style="font-weight:${isToday ? 'bold' : 'normal'};color:${isToday ? '#0f0' : '#eee'};font-size:13px;margin-bottom:2px">${l.date}</div>
+            ${isToday ? '<div style="font-size:9px;color:#0f0">TODAY</div>' : ''}
+          </div>
+          <div style="flex:1;display:flex;gap:8px;align-items:center;font-size:11px;flex-wrap:wrap">
+            <div style="padding:4px 8px;background:#0a0a0a;border:1px solid #333;border-radius:2px">
+              <span style="color:#666">Models:</span> <strong style="color:#0f0">${models.length}</strong>
+            </div>
+            <div style="padding:4px 8px;background:#0a0a0a;border:1px solid #333;border-radius:2px">
+              <span style="color:#666">Total Accounts:</span> <strong style="color:#4af">${totalAcc}</strong>
+            </div>
+            <div style="padding:4px 8px;background:#0a0a0a;border:1px solid #333;border-radius:2px">
+              <span style="color:#666">Outreached:</span> <strong style="color:#ff0">${totalOut}</strong>
+            </div>
+            <div style="padding:4px 8px;background:#0a0a0a;border:1px solid #333;border-radius:2px">
+              <span style="color:#666">Remaining:</span> <strong style="color:#f4a">${totalRem}</strong>
+            </div>
+          </div>
+          <div style="flex:0 0 auto;display:flex;gap:5px">
+            <button class="btn btn-sm" style="font-size:10px;padding:2px 8px" onclick="editModelOutreach('${logId}')">Edit</button>
+            <button class="btn btn-sm" style="font-size:10px;padding:2px 8px" onclick="delModelOutreach('${logId}')">Delete</button>
+          </div>
+        </div>
+        ${models.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px">
+          ${models.map(m => `<div style="padding:6px 8px;background:#0a0a0a;border:1px solid #222;border-radius:3px;font-size:10px">
+            <strong style="color:#0f0">${m.name || 'Unnamed'}</strong>
+            <div style="display:flex;gap:10px;margin-top:3px">
+              <span><span style="color:#666">Acc:</span> <strong style="color:#4af">${m.activeAccounts || 0}</strong></span>
+              <span><span style="color:#666">Out:</span> <strong style="color:#ff0">${m.outreachedToday || 0}</strong></span>
+              <span><span style="color:#666">Rem:</span> <strong style="color:#f4a">${m.collectionRemaining || 0}</strong></span>
+            </div>
+          </div>`).join('')}
+        </div>` : ''}
+        ${l.notes ? `<div style="margin-top:8px;padding:6px 8px;background:#0a0a0a;border:1px solid #222;border-radius:2px;font-size:10px;color:#999"><strong style="color:#666;font-size:9px;margin-right:5px">Notes:</strong>${l.notes}</div>` : ''}
+      </div>`;
+    });
+
+    document.getElementById('moLog').innerHTML = html || '<div class="empty-state">No model outreach logs</div>';
+  } catch (e) {
+    console.error('loadModelOutreach error:', e);
+    document.getElementById('moLog').innerHTML = '<div class="empty-state">Error loading logs</div>';
+  }
+}
+
+async function saveModelOutreach() {
+  const editId = document.getElementById('moEditId')?.value;
+
+  // Collect models from dynamic rows
+  const rows = document.querySelectorAll('.mo-model-row');
+  const models = [];
+  rows.forEach(row => {
+    const name = row.querySelector('.mo-name')?.value?.trim();
+    if (!name) return;
+    models.push({
+      name: name,
+      activeAccounts: parseInt(row.querySelector('.mo-accounts')?.value) || 0,
+      outreachedToday: parseInt(row.querySelector('.mo-outreached')?.value) || 0,
+      collectionRemaining: parseInt(row.querySelector('.mo-remaining')?.value) || 0
+    });
+  });
+
+  if (!models.length) {
+    toast('Add at least one model', 'error');
+    return;
+  }
+
+  const date = editId ? editId.split('_').slice(1).join('_') : new Date().toISOString().split('T')[0];
+  const logId = editId || `${userId}_${date}`;
+
+  const data = {
+    userId: userId,
+    date: date,
+    models: models,
+    notes: document.getElementById('moNotes')?.value?.trim() || ''
+  };
+
+  await DB.set('model_outreach_logs', logId, data);
+
+  closeModal();
+  toast(editId ? 'Model outreach log updated!' : 'Model outreach data saved!', 'success');
+  loadModelOutreach();
+}
+
+function addModelOutreachRow(model) {
+  const container = document.getElementById('moModelsContainer');
+  const row = document.createElement('div');
+  row.className = 'mo-model-row';
+  row.style.cssText = 'padding:10px;background:#0a0a0a;border:1px solid #333;border-radius:4px;margin-bottom:8px';
+  row.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <input type="text" class="form-input mo-name" placeholder="Model name" value="${model?.name || ''}" style="flex:1;margin-right:8px">
+      <button class="btn btn-sm" style="font-size:10px;padding:2px 8px;background:#c62828;color:#fff" onclick="this.closest('.mo-model-row').remove()">Remove</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+      <div>
+        <label style="display:block;color:#666;font-size:9px;margin-bottom:3px">Active Accounts</label>
+        <input type="number" class="form-input mo-accounts" min="0" value="${model?.activeAccounts || 0}" style="width:100%">
+      </div>
+      <div>
+        <label style="display:block;color:#666;font-size:9px;margin-bottom:3px">Outreached Today</label>
+        <input type="number" class="form-input mo-outreached" min="0" value="${model?.outreachedToday || 0}" style="width:100%">
+      </div>
+      <div>
+        <label style="display:block;color:#666;font-size:9px;margin-bottom:3px">Collection Remaining</label>
+        <input type="number" class="form-input mo-remaining" min="0" value="${model?.collectionRemaining || 0}" style="width:100%">
+      </div>
+    </div>
+  `;
+  container.appendChild(row);
+}
+
+async function editModelOutreach(logId) {
+  try {
+    let log = await DB.get('model_outreach_logs', logId);
+    if (!log) {
+      toast('Log not found', 'error');
+      return;
+    }
+    if (!log.id) log.id = logId;
+    modal('modelOutreach', log);
+  } catch (e) {
+    console.error('editModelOutreach error:', e);
+    toast('Error loading log', 'error');
+  }
+}
+
+async function delModelOutreach(logId) {
+  if (await confirmDialog('Delete this model outreach log?')) {
+    try {
+      await DB.delete('model_outreach_logs', logId);
+      toast('Log deleted', 'success');
+      loadModelOutreach();
+    } catch (e) {
+      console.error('delModelOutreach error:', e);
       toast('Error deleting log', 'error');
     }
   }

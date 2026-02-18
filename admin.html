@@ -55,6 +55,9 @@
     <div id="daily" class="section active">
       <div class="section-title">
         <span>Work Calendar</span>
+        <select id="assistantSelect" onchange="switchAssistant(this.value)" style="background:#111;border:1px solid #333;color:#0f0;padding:5px 10px;font-size:13px;font-family:'Courier New',monospace;border-radius:4px">
+          <option value="">Loading...</option>
+        </select>
       </div>
 
       <div class="tabs">
@@ -194,8 +197,19 @@
 
       <!-- Payroll Tab -->
       <div id="t-payroll" class="tab-content">
+        <!-- Payment Summary across ALL assistants -->
         <div class="box">
-          <div class="box-header">My Wallets <button class="btn btn-sm btn-primary" onclick="modal('wallet')">Add Wallet</button></div>
+          <div class="box-header">
+            <span>Payment Summary</span>
+            <span style="font-size:11px;color:#ff0" id="summaryTotalPending">$0 total pending</span>
+          </div>
+          <div class="box-body" id="paymentSummary">
+            <div class="empty-state">Loading...</div>
+          </div>
+        </div>
+
+        <div class="box" style="margin-top:15px">
+          <div class="box-header">Wallets <button class="btn btn-sm btn-primary" onclick="modal('wallet')">Add Wallet</button></div>
           <div class="box-body" id="walletList"></div>
         </div>
 
@@ -861,6 +875,13 @@
             <button class="btn btn-primary" onclick="saveRate()">Save Rate</button>
           </div>
         </div>
+        <div class="box" style="margin-top:15px">
+          <div class="box-header">Data Management</div>
+          <div class="box-body">
+            <p style="color:#999;font-size:11px;margin-bottom:10px">Delete all old payroll/work data and seed fresh test data from Feb 16.</p>
+            <button class="btn" style="border-color:#f55;color:#f55" onclick="cleanAndSeed()">Clean All & Seed Fresh Data</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -896,7 +917,7 @@
   <script src="js/db.js?v=1009"></script>
   <script src="js/video-spoof.js?v=1009"></script>
   <script src="js/photo-spoof.js?v=1010"></script>
-  <script src="js/admin.js?v=1011"></script>
+  <script src="js/admin.js?v=1020"></script>
 
   <!-- PWA Service Worker Registration - DISABLED for stability -->
   <script>

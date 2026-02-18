@@ -3,8 +3,12 @@ const DB = {
   user: null,
 
   init() {
-    console.log('🔧 DB.init() START - v1007');
-    firebase.initializeApp(CONFIG.firebase);
+    console.log('🔧 DB.init() START - v1008');
+
+    // Initialize Firebase only if not already initialized
+    if (!firebase.apps.length) {
+      firebase.initializeApp(CONFIG.firebase);
+    }
     this.db = firebase.firestore();
 
     // CRITICAL: Enable network for Firestore (prevent offline errors)

@@ -12,13 +12,13 @@ const CONFIG = {
     appId: "1:537065530:web:ba3a8c51cb7dcb56508d78"
   },
   llm: {
-    apiKey: "YOUR_OPENROUTER_API_KEY_HERE",
+    apiKey: "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",
     model: "deepseek/deepseek-chat",
     endpoint: "https://openrouter.ai/api/v1/chat/completions"
   },
   telegram: {
-    botToken: "YOUR_TELEGRAM_BOT_TOKEN_HERE",
-    adminChatId: "YOUR_TELEGRAM_CHAT_ID_HERE"
+    botToken: "8436006125:AAF0znIGZqvVWIvdjMPaaQHtcXN6AgwcftQ",
+    adminChatId: "8460086102"
   },
   elevenlabs: {
     apiKey: "YOUR_ELEVENLABS_API_KEY_HERE",
