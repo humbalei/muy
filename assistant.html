@@ -419,12 +419,25 @@
       <div class="tabs">
         <div class="tab active" data-t="m-pot">Potential</div>
         <div class="tab" data-t="m-act">Active</div>
+        <div class="tab" data-t="m-mkt">Market</div>
       </div>
       <div id="m-pot" class="tab-content active">
         <div class="grid grid-4" id="potList"></div>
       </div>
       <div id="m-act" class="tab-content">
         <div class="grid grid-4" id="actList"></div>
+      </div>
+      <div id="m-mkt" class="tab-content">
+        <div class="box" style="margin-bottom:15px">
+          <div class="box-header">
+            Market Models
+            <button class="btn btn-sm btn-primary" onclick="modal('marketModel')">Add Market Model</button>
+          </div>
+          <div class="box-body">
+            <p style="color:#999;font-size:11px;margin-bottom:10px">Models available on the marketplace for contract sales to other agencies. Maintain contact and write reports.</p>
+          </div>
+        </div>
+        <div class="grid grid-4" id="mktList"></div>
       </div>
     </div>
 
@@ -508,7 +521,7 @@
   <script src="js/config.js?v=1018"></script>
   <script src="js/config.local.js?v=1018"></script>
   <script src="js/db.js?v=1018"></script>
-  <script src="js/app.js?v=1019"></script>
+  <script src="js/app.js?v=1020"></script>
 
   <!-- PWA Service Worker Registration - DISABLED for stability -->
   <script>

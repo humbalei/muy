@@ -2724,9 +2724,158 @@ async function loadModels() {
   const allModels = await DB.getAll('models', [{ field: 'userId', value: userId }]);
   const pot = allModels.filter(m => m.status === 'potential');
   const act = allModels.filter(m => m.status === 'active');
+  const mkt = allModels.filter(m => m.status === 'market');
 
   document.getElementById('potList').innerHTML = renderModels(pot) || '<div class="empty-state">No potential models</div>';
   document.getElementById('actList').innerHTML = renderModels(act) || '<div class="empty-state">No active models</div>';
+  document.getElementById('mktList').innerHTML = renderMarketModels(mkt) || '<div class="empty-state">No market models yet</div>';
+}
+
+function renderMarketModels(models) {
+  if (!models.length) return '';
+  const today = new Date().toISOString().split('T')[0];
+  return models.map(m => {
+    const lastComm = m.lastCommunication ? new Date(m.lastCommunication).toISOString().split('T')[0] : null;
+    const daysSince = lastComm ? Math.floor((new Date(today) - new Date(lastComm)) / (1000*60*60*24)) : null;
+    const needsContact = daysSince === null || daysSince > 0;
+    const reports = m.marketReports || [];
+    const lastReport = reports.length ? reports[reports.length - 1] : null;
+
+    return `<div class="model-card" style="cursor:default;padding:12px">
+      <div class="model-card-img" style="cursor:pointer" onclick="modal('marketModelView','${m.id}')">
+        ${m.photo ? `<img src="${m.photo}" alt="${m.name}">` : '<div style="display:flex;align-items:center;justify-content:center;height:100%;background:#222;color:#666">No Photo</div>'}
+      </div>
+      <div class="model-card-body">
+        <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px">
+          <div>
+            <div class="model-card-name">${m.name}</div>
+            <div style="font-size:11px;color:#999">${m.country || '-'}, ${m.age || '-'}y</div>
+          </div>
+          <span style="background:#e91e63;color:#fff;padding:2px 8px;border-radius:2px;font-size:9px">MARKET</span>
+        </div>
+
+        ${m.marketPrice ? `<div style="font-size:12px;color:#ff0;margin-bottom:6px">Contract: $${m.marketPrice}</div>` : ''}
+        ${m.marketNotes ? `<div style="font-size:10px;color:#999;margin-bottom:6px">${m.marketNotes.substring(0, 80)}${m.marketNotes.length > 80 ? '...' : ''}</div>` : ''}
+
+        <div style="margin:8px 0;padding:8px;background:#0a0a0a;border:1px solid #333;border-radius:3px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:10px;color:#666">Last contact:</span>
+            <span style="font-size:11px;color:${needsContact ? '#f00' : '#0f0'}">${needsContact ? (daysSince === null ? 'Never' : daysSince + 'd ago') : 'Today ✓'}</span>
+          </div>
+          ${m.marketStatus ? `<div style="font-size:10px;color:#0f0;margin-top:4px">Status: ${m.marketStatus}</div>` : ''}
+        </div>
+
+        ${lastReport ? `<div style="margin:6px 0;padding:6px;background:#0a0a0a;border-left:2px solid #e91e63;border-radius:2px">
+          <div style="font-size:9px;color:#666">${new Date(lastReport.date).toLocaleDateString('en-US', {month:'short',day:'numeric'})}</div>
+          <div style="font-size:10px;color:#ccc">${lastReport.text.substring(0, 60)}${lastReport.text.length > 60 ? '...' : ''}</div>
+        </div>` : ''}
+
+        <div style="display:flex;gap:5px;margin-top:8px">
+          <button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px" onclick="logMarketContact('${m.id}')">Log Contact</button>
+          <button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px" onclick="addMarketReport('${m.id}')">Report</button>
+          <button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px" onclick="modal('marketModel',${JSON.stringify(m).replace(/"/g,'&quot;')})">Edit</button>
+          <button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px;background:#c62828;color:#fff" onclick="deleteModel('${m.id}')">Del</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function logMarketContact(id) {
+  const model = await DB.get('models', id);
+  if (!model) return toast('Model not found', 'error');
+  const notes = model.communicationNotes || [];
+  const note = prompt('Quick contact note:');
+  if (!note) return;
+  notes.push({ date: new Date().toISOString(), note, progress: 'neutral' });
+  await DB.update('models', id, {
+    communicationNotes: notes,
+    lastCommunication: new Date().toISOString(),
+    communicationStreak: (model.communicationStreak || 0) + 1
+  });
+  toast('Contact logged', 'success');
+  loadModels();
+}
+
+async function addMarketReport(id) {
+  const model = await DB.get('models', id);
+  if (!model) return toast('Model not found', 'error');
+  const mTitle = document.getElementById('mTitle');
+  const mBody = document.getElementById('mBody');
+  mTitle.textContent = `Report: ${model.name}`;
+  mBody.innerHTML = `
+    <input type="hidden" id="mktReportId" value="${id}">
+    <div class="form-group">
+      <label class="form-label">Report:</label>
+      <textarea class="form-textarea" id="mktReportText" style="min-height:120px" placeholder="Status update, agency interest, contact summary..."></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Market Status:</label>
+      <select class="form-select" id="mktReportStatus">
+        <option value="available">Available</option>
+        <option value="in_talks">In Talks with Agency</option>
+        <option value="contract_sent">Contract Sent</option>
+        <option value="sold">Sold</option>
+        <option value="on_hold">On Hold</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="saveMarketReport()">Save Report</button>
+  `;
+  if (model.marketStatus) {
+    setTimeout(() => { const sel = document.getElementById('mktReportStatus'); if(sel) sel.value = model.marketStatus; }, 50);
+  }
+  document.getElementById('modal').style.display = 'flex';
+}
+
+async function saveMarketReport() {
+  const id = document.getElementById('mktReportId').value;
+  const text = document.getElementById('mktReportText').value.trim();
+  const status = document.getElementById('mktReportStatus').value;
+  if (!text) return toast('Write a report', 'error');
+  const model = await DB.get('models', id);
+  const reports = model.marketReports || [];
+  reports.push({ date: new Date().toISOString(), text, status });
+  await DB.update('models', id, { marketReports: reports, marketStatus: status });
+  closeModal();
+  toast('Report saved', 'success');
+  loadModels();
+}
+
+async function saveMarketModel() {
+  const editId = document.getElementById('mktEditId')?.value;
+  const name = document.getElementById('mktName')?.value?.trim();
+  if (!name) return toast('Name is required', 'error');
+
+  const data = {
+    userId: userId,
+    name,
+    photo: document.getElementById('mktPhoto')?.value?.trim() || '',
+    country: document.getElementById('mktCountry')?.value?.trim() || '',
+    age: parseInt(document.getElementById('mktAge')?.value) || null,
+    status: 'market',
+    marketPrice: parseFloat(document.getElementById('mktPrice')?.value) || null,
+    contactInfo: document.getElementById('mktContact')?.value?.trim() || '',
+    marketNotes: document.getElementById('mktNotes')?.value?.trim() || '',
+    marketStatus: document.getElementById('mktStatus')?.value || 'available'
+  };
+
+  if (editId) {
+    const existing = await DB.get('models', editId);
+    data.communicationNotes = existing?.communicationNotes || [];
+    data.lastCommunication = existing?.lastCommunication || null;
+    data.communicationStreak = existing?.communicationStreak || 0;
+    data.marketReports = existing?.marketReports || [];
+    await DB.update('models', editId, data);
+    toast('Market model updated!', 'success');
+  } else {
+    data.addedDate = new Date().toISOString();
+    data.communicationNotes = [];
+    data.marketReports = [];
+    await DB.add('models', data);
+    toast('Market model added!', 'success');
+  }
+  closeModal();
+  loadModels();
 }
 
 async function logCommunication(modelId) {
@@ -5008,6 +5157,57 @@ async function modal(type, data) {
         </div>
 
         <button class="btn btn-primary" onclick="saveLeadItem()">${isEditLead ? 'Update' : 'Add'} Lead</button>
+      `;
+      break;
+
+    case 'marketModel':
+      const isEditMkt = data && data.id;
+      title.textContent = isEditMkt ? `Edit ${data.name}` : 'Add Market Model';
+      body.innerHTML = `
+        <input type="hidden" id="mktEditId" value="${isEditMkt ? data.id : ''}">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px">
+          <div class="form-group">
+            <label class="form-label">Name *</label>
+            <input type="text" class="form-input" id="mktName" value="${isEditMkt ? (data.name||'') : ''}" placeholder="Model name">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Photo URL</label>
+            <input type="text" class="form-input" id="mktPhoto" value="${isEditMkt ? (data.photo||'') : ''}" placeholder="https://...">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px">
+          <div class="form-group">
+            <label class="form-label">Country</label>
+            <input type="text" class="form-input" id="mktCountry" value="${isEditMkt ? (data.country||'') : ''}" placeholder="e.g. Colombia">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Age</label>
+            <input type="number" class="form-input" id="mktAge" value="${isEditMkt ? (data.age||'') : ''}" min="18" max="60">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Contract Price ($)</label>
+            <input type="number" class="form-input" id="mktPrice" value="${isEditMkt ? (data.marketPrice||'') : ''}" placeholder="e.g. 500">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Contact Info (Telegram, WhatsApp, etc.)</label>
+          <input type="text" class="form-input" id="mktContact" value="${isEditMkt ? (data.contactInfo||'') : ''}" placeholder="@telegram or phone">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Notes (experience, what she offers, etc.)</label>
+          <textarea class="form-textarea" id="mktNotes" style="min-height:80px" placeholder="Details about this model for the marketplace...">${isEditMkt ? (data.marketNotes||'') : ''}</textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Market Status</label>
+          <select class="form-select" id="mktStatus">
+            <option value="available" ${isEditMkt && data.marketStatus==='available' ? 'selected' : ''}>Available</option>
+            <option value="in_talks" ${isEditMkt && data.marketStatus==='in_talks' ? 'selected' : ''}>In Talks with Agency</option>
+            <option value="contract_sent" ${isEditMkt && data.marketStatus==='contract_sent' ? 'selected' : ''}>Contract Sent</option>
+            <option value="sold" ${isEditMkt && data.marketStatus==='sold' ? 'selected' : ''}>Sold</option>
+            <option value="on_hold" ${isEditMkt && data.marketStatus==='on_hold' ? 'selected' : ''}>On Hold</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="saveMarketModel()">${isEditMkt ? 'Update' : 'Save'} Market Model</button>
       `;
       break;
 
