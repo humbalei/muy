@@ -2734,51 +2734,114 @@ async function loadModels() {
 function renderMarketModels(models) {
   if (!models.length) return '';
   const today = new Date().toISOString().split('T')[0];
+  const statusColors = { available: '#0f0', in_talks: '#ff0', contract_sent: '#0af', sold: '#e91e63', on_hold: '#999' };
+  const statusLabels = { available: 'Available', in_talks: 'In Talks', contract_sent: 'Contract Sent', sold: 'Sold', on_hold: 'On Hold' };
+  const contactLabels = { yes: 'In Contact', occasional: 'Occasional', no: 'No Contact', lost: 'Lost Contact' };
+  const contactColors = { yes: '#0f0', occasional: '#ff0', no: '#f00', lost: '#f00' };
+
   return models.map(m => {
     const lastComm = m.lastCommunication ? new Date(m.lastCommunication).toISOString().split('T')[0] : null;
     const daysSince = lastComm ? Math.floor((new Date(today) - new Date(lastComm)) / (1000*60*60*24)) : null;
     const needsContact = daysSince === null || daysSince > 0;
     const reports = m.marketReports || [];
-    const lastReport = reports.length ? reports[reports.length - 1] : null;
+    const recentReports = reports.slice(-3).reverse();
+    const ms = m.marketStatus || 'available';
+    const ac = m.assistantInContact || 'no';
 
-    return `<div class="model-card" style="cursor:default;padding:12px">
-      <div class="model-card-img" style="cursor:pointer" onclick="modal('marketModelView','${m.id}')">
+    return `<div class="model-card" style="cursor:default;padding:12px;border-color:${statusColors[ms] || '#333'}">
+      <div class="model-card-img" style="cursor:pointer" onclick="viewMarketModelReports('${m.id}')">
         ${m.photo ? `<img src="${m.photo}" alt="${m.name}">` : '<div style="display:flex;align-items:center;justify-content:center;height:100%;background:#222;color:#666">No Photo</div>'}
       </div>
       <div class="model-card-body">
-        <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:6px">
           <div>
             <div class="model-card-name">${m.name}</div>
             <div style="font-size:11px;color:#999">${m.country || '-'}, ${m.age || '-'}y</div>
           </div>
-          <span style="background:#e91e63;color:#fff;padding:2px 8px;border-radius:2px;font-size:9px">MARKET</span>
+          <span style="background:${statusColors[ms]};color:#000;padding:2px 8px;border-radius:2px;font-size:9px;font-weight:bold">${statusLabels[ms]}</span>
         </div>
 
-        ${m.marketPrice ? `<div style="font-size:12px;color:#ff0;margin-bottom:6px">Contract: $${m.marketPrice}</div>` : ''}
-        ${m.marketNotes ? `<div style="font-size:10px;color:#999;margin-bottom:6px">${m.marketNotes.substring(0, 80)}${m.marketNotes.length > 80 ? '...' : ''}</div>` : ''}
+        ${m.marketPrice ? `<div style="font-size:13px;color:#ff0;font-weight:bold;margin-bottom:4px">$${m.marketPrice}</div>` : ''}
 
-        <div style="margin:8px 0;padding:8px;background:#0a0a0a;border:1px solid #333;border-radius:3px">
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <span style="font-size:10px;color:#666">Last contact:</span>
-            <span style="font-size:11px;color:${needsContact ? '#f00' : '#0f0'}">${needsContact ? (daysSince === null ? 'Never' : daysSince + 'd ago') : 'Today ✓'}</span>
+        <div style="margin:6px 0;padding:6px;background:#0a0a0a;border:1px solid #333;border-radius:3px;font-size:10px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+            <span style="color:#666">Last contact:</span>
+            <span style="color:${needsContact ? '#f00' : '#0f0'}">${needsContact ? (daysSince === null ? 'Never' : daysSince + 'd ago') : 'Today ✓'}</span>
           </div>
-          ${m.marketStatus ? `<div style="font-size:10px;color:#0f0;margin-top:4px">Status: ${m.marketStatus}</div>` : ''}
+          <div style="display:flex;justify-content:space-between">
+            <span style="color:#666">Assistant:</span>
+            <span style="color:${contactColors[ac]}">${contactLabels[ac]}</span>
+          </div>
         </div>
 
-        ${lastReport ? `<div style="margin:6px 0;padding:6px;background:#0a0a0a;border-left:2px solid #e91e63;border-radius:2px">
-          <div style="font-size:9px;color:#666">${new Date(lastReport.date).toLocaleDateString('en-US', {month:'short',day:'numeric'})}</div>
-          <div style="font-size:10px;color:#ccc">${lastReport.text.substring(0, 60)}${lastReport.text.length > 60 ? '...' : ''}</div>
-        </div>` : ''}
+        ${m.telegramAdLink ? `<a href="${m.telegramAdLink}" target="_blank" style="display:block;font-size:10px;color:#0af;margin:4px 0;text-decoration:none">📢 TG Channel Ad</a>` : ''}
+        ${m.bossGroupLink ? `<a href="${m.bossGroupLink}" target="_blank" style="display:block;font-size:10px;color:#0af;margin:4px 0;text-decoration:none">👔 Boss TG Group</a>` : ''}
 
-        <div style="display:flex;gap:5px;margin-top:8px">
+        ${m.marketNotes ? `<div style="font-size:10px;color:#999;margin:6px 0;line-height:1.4">${m.marketNotes.substring(0, 100)}${m.marketNotes.length > 100 ? '...' : ''}</div>` : ''}
+
+        ${recentReports.length > 0 ? `
+        <div style="margin:8px 0;padding:6px;background:#0a0a0a;border:1px solid #222;border-radius:3px">
+          <div style="font-size:9px;color:#e91e63;margin-bottom:4px;font-weight:bold">Reports (${reports.length}):</div>
+          ${recentReports.map(r => `<div style="margin:4px 0;padding:4px;border-left:2px solid #e91e63;padding-left:6px">
+            <div style="font-size:9px;color:#666">${new Date(r.date).toLocaleDateString('en-US', {month:'short',day:'numeric'})}</div>
+            <div style="font-size:10px;color:#ccc">${r.text.substring(0, 80)}${r.text.length > 80 ? '...' : ''}</div>
+          </div>`).join('')}
+        </div>` : '<div style="font-size:10px;color:#666;margin:6px 0;font-style:italic">No reports yet</div>'}
+
+        <div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap">
           <button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px" onclick="logMarketContact('${m.id}')">Log Contact</button>
-          <button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px" onclick="addMarketReport('${m.id}')">Report</button>
+          <button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px;border-color:#e91e63;color:#e91e63" onclick="addMarketReport('${m.id}')">+ Report</button>
+        </div>
+        <div style="display:flex;gap:4px;margin-top:4px">
           <button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px" onclick="modal('marketModel',${JSON.stringify(m).replace(/"/g,'&quot;')})">Edit</button>
+          <button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px" onclick="viewMarketModelReports('${m.id}')">All Reports</button>
           <button class="btn btn-sm" style="flex:1;font-size:10px;padding:4px;background:#c62828;color:#fff" onclick="deleteModel('${m.id}')">Del</button>
         </div>
       </div>
     </div>`;
   }).join('');
+}
+
+async function viewMarketModelReports(id) {
+  const model = await DB.get('models', id);
+  if (!model) return;
+  const reports = model.marketReports || [];
+  const commNotes = model.communicationNotes || [];
+  const mTitle = document.getElementById('mTitle');
+  const mBody = document.getElementById('mBody');
+  document.getElementById('mBox').className = 'modal-box large';
+  mTitle.textContent = `${model.name} - Reports & Contact History`;
+  mBody.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <div>
+        <h3 style="color:#e91e63;margin-bottom:10px;font-size:14px">Reports (${reports.length})</h3>
+        <div style="max-height:400px;overflow-y:auto">
+          ${reports.length ? [...reports].reverse().map(r => `<div style="margin-bottom:10px;padding:10px;background:#0a0a0a;border-left:3px solid #e91e63;border-radius:3px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+              <span style="font-size:10px;color:#666">${new Date(r.date).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'})}</span>
+              <span style="font-size:10px;color:#0f0">${r.status || '-'}</span>
+            </div>
+            <div style="font-size:12px;color:#ccc;line-height:1.5">${r.text}</div>
+          </div>`).join('') : '<div style="color:#666;font-size:11px">No reports yet</div>'}
+        </div>
+      </div>
+      <div>
+        <h3 style="color:#0f0;margin-bottom:10px;font-size:14px">Contact Log (${commNotes.length})</h3>
+        <div style="max-height:400px;overflow-y:auto">
+          ${commNotes.length ? [...commNotes].reverse().map(n => `<div style="margin-bottom:8px;padding:8px;background:#0a0a0a;border-left:3px solid #0f0;border-radius:3px">
+            <div style="font-size:10px;color:#666;margin-bottom:3px">${new Date(n.date).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'})}</div>
+            <div style="font-size:11px;color:#ccc">${n.note}</div>
+          </div>`).join('') : '<div style="color:#666;font-size:11px">No contact logs yet</div>'}
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:15px;display:flex;gap:10px">
+      <button class="btn btn-sm" style="flex:1" onclick="logMarketContact('${id}');closeModal()">Log Contact</button>
+      <button class="btn btn-sm" style="flex:1;border-color:#e91e63;color:#e91e63" onclick="closeModal();addMarketReport('${id}')">+ Report</button>
+      <button class="btn" onclick="closeModal()">Close</button>
+    </div>
+  `;
+  document.getElementById('modal').style.display = 'flex';
 }
 
 async function logMarketContact(id) {
@@ -2855,8 +2918,11 @@ async function saveMarketModel() {
     status: 'market',
     marketPrice: parseFloat(document.getElementById('mktPrice')?.value) || null,
     contactInfo: document.getElementById('mktContact')?.value?.trim() || '',
+    bossGroupLink: document.getElementById('mktBossGroup')?.value?.trim() || '',
+    telegramAdLink: document.getElementById('mktAdLink')?.value?.trim() || '',
     marketNotes: document.getElementById('mktNotes')?.value?.trim() || '',
-    marketStatus: document.getElementById('mktStatus')?.value || 'available'
+    marketStatus: document.getElementById('mktStatus')?.value || 'available',
+    assistantInContact: document.getElementById('mktInContact')?.value || 'no'
   };
 
   if (editId) {
@@ -3053,6 +3119,7 @@ function renderModels(models) {
     if (m.onAssistantWhatsApp) contactBadges.push('<span title="On My WhatsApp" style="background:#25D366;color:#fff;padding:2px 6px;border-radius:2px;font-size:9px">My WA</span>');
     if (m.onBossTelegram) contactBadges.push('<span title="On Boss\'s Telegram" style="background:#0088cc;color:#fff;padding:2px 6px;border-radius:2px;font-size:9px">Boss TG</span>');
     if (m.onBossWhatsApp) contactBadges.push('<span title="On Boss\'s WhatsApp" style="background:#25D366;color:#fff;padding:2px 6px;border-radius:2px;font-size:9px">Boss WA</span>');
+    if (m.bossGroupLink) contactBadges.push(`<a href="${m.bossGroupLink}" target="_blank" title="Boss TG Group" style="background:#e91e63;color:#fff;padding:2px 6px;border-radius:2px;font-size:9px;text-decoration:none">Group</a>`);
 
     // Get recent communication notes (last 3)
     const commNotes = m.communicationNotes || [];
@@ -5163,50 +5230,85 @@ async function modal(type, data) {
     case 'marketModel':
       const isEditMkt = data && data.id;
       title.textContent = isEditMkt ? `Edit ${data.name}` : 'Add Market Model';
+      document.getElementById('mBox').className = 'modal-box large';
       body.innerHTML = `
         <input type="hidden" id="mktEditId" value="${isEditMkt ? data.id : ''}">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px">
-          <div class="form-group">
-            <label class="form-label">Name *</label>
-            <input type="text" class="form-input" id="mktName" value="${isEditMkt ? (data.name||'') : ''}" placeholder="Model name">
+
+        <div style="margin-bottom:20px;padding-bottom:20px;border-bottom:2px solid #333">
+          <h3 style="color:#e91e63;margin-bottom:15px">Basic Info</h3>
+          <div class="grid grid-2">
+            <div class="form-group">
+              <label class="form-label">Name *</label>
+              <input type="text" class="form-input" id="mktName" value="${isEditMkt ? (data.name||'') : ''}" placeholder="Model name">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Photo URL</label>
+              <input type="text" class="form-input" id="mktPhoto" value="${isEditMkt ? (data.photo||'') : ''}" placeholder="https://i.imgur.com/...">
+            </div>
           </div>
-          <div class="form-group">
-            <label class="form-label">Photo URL</label>
-            <input type="text" class="form-input" id="mktPhoto" value="${isEditMkt ? (data.photo||'') : ''}" placeholder="https://...">
+          <div class="grid grid-3">
+            <div class="form-group">
+              <label class="form-label">Country</label>
+              <input type="text" class="form-input" id="mktCountry" value="${isEditMkt ? (data.country||'') : ''}" placeholder="e.g. Colombia">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Age</label>
+              <input type="number" class="form-input" id="mktAge" value="${isEditMkt ? (data.age||'') : ''}" min="18" max="60">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Contract Price ($)</label>
+              <input type="number" class="form-input" id="mktPrice" value="${isEditMkt ? (data.marketPrice||'') : ''}" placeholder="e.g. 500">
+            </div>
           </div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px">
-          <div class="form-group">
-            <label class="form-label">Country</label>
-            <input type="text" class="form-input" id="mktCountry" value="${isEditMkt ? (data.country||'') : ''}" placeholder="e.g. Colombia">
+
+        <div style="margin-bottom:20px;padding-bottom:20px;border-bottom:2px solid #333">
+          <h3 style="color:#e91e63;margin-bottom:15px">Contact & Links</h3>
+          <div class="grid grid-2">
+            <div class="form-group">
+              <label class="form-label">Her Contact (TG/WA/phone)</label>
+              <input type="text" class="form-input" id="mktContact" value="${isEditMkt ? (data.contactInfo||'') : ''}" placeholder="@telegram or +phone">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Boss TG Group Link</label>
+              <input type="text" class="form-input" id="mktBossGroup" value="${isEditMkt ? (data.bossGroupLink||'') : ''}" placeholder="https://t.me/+...">
+            </div>
           </div>
           <div class="form-group">
-            <label class="form-label">Age</label>
-            <input type="number" class="form-input" id="mktAge" value="${isEditMkt ? (data.age||'') : ''}" min="18" max="60">
+            <label class="form-label">Telegram Channel Ad Link</label>
+            <input type="text" class="form-input" id="mktAdLink" value="${isEditMkt ? (data.telegramAdLink||'') : ''}" placeholder="https://t.me/channel/123">
           </div>
+        </div>
+
+        <div style="margin-bottom:20px;padding-bottom:20px;border-bottom:2px solid #333">
+          <h3 style="color:#e91e63;margin-bottom:15px">Details</h3>
           <div class="form-group">
-            <label class="form-label">Contract Price ($)</label>
-            <input type="number" class="form-input" id="mktPrice" value="${isEditMkt ? (data.marketPrice||'') : ''}" placeholder="e.g. 500">
+            <label class="form-label">Description (experience, what she offers, languages, etc.)</label>
+            <textarea class="form-textarea" id="mktNotes" style="min-height:100px" placeholder="Detailed info about this model for buyers...">${isEditMkt ? (data.marketNotes||'') : ''}</textarea>
+          </div>
+          <div class="grid grid-2">
+            <div class="form-group">
+              <label class="form-label">Market Status</label>
+              <select class="form-select" id="mktStatus">
+                <option value="available" ${isEditMkt && data.marketStatus==='available' ? 'selected' : ''}>Available</option>
+                <option value="in_talks" ${isEditMkt && data.marketStatus==='in_talks' ? 'selected' : ''}>In Talks with Agency</option>
+                <option value="contract_sent" ${isEditMkt && data.marketStatus==='contract_sent' ? 'selected' : ''}>Contract Sent</option>
+                <option value="sold" ${isEditMkt && data.marketStatus==='sold' ? 'selected' : ''}>Sold</option>
+                <option value="on_hold" ${isEditMkt && data.marketStatus==='on_hold' ? 'selected' : ''}>On Hold</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Assistant in Contact?</label>
+              <select class="form-select" id="mktInContact">
+                <option value="yes" ${isEditMkt && data.assistantInContact==='yes' ? 'selected' : ''}>Yes - Regular Contact</option>
+                <option value="occasional" ${isEditMkt && data.assistantInContact==='occasional' ? 'selected' : ''}>Occasional</option>
+                <option value="no" ${!isEditMkt || !data.assistantInContact || data.assistantInContact==='no' ? 'selected' : ''}>No Contact Yet</option>
+                <option value="lost" ${isEditMkt && data.assistantInContact==='lost' ? 'selected' : ''}>Lost Contact</option>
+              </select>
+            </div>
           </div>
         </div>
-        <div class="form-group">
-          <label class="form-label">Contact Info (Telegram, WhatsApp, etc.)</label>
-          <input type="text" class="form-input" id="mktContact" value="${isEditMkt ? (data.contactInfo||'') : ''}" placeholder="@telegram or phone">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Notes (experience, what she offers, etc.)</label>
-          <textarea class="form-textarea" id="mktNotes" style="min-height:80px" placeholder="Details about this model for the marketplace...">${isEditMkt ? (data.marketNotes||'') : ''}</textarea>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Market Status</label>
-          <select class="form-select" id="mktStatus">
-            <option value="available" ${isEditMkt && data.marketStatus==='available' ? 'selected' : ''}>Available</option>
-            <option value="in_talks" ${isEditMkt && data.marketStatus==='in_talks' ? 'selected' : ''}>In Talks with Agency</option>
-            <option value="contract_sent" ${isEditMkt && data.marketStatus==='contract_sent' ? 'selected' : ''}>Contract Sent</option>
-            <option value="sold" ${isEditMkt && data.marketStatus==='sold' ? 'selected' : ''}>Sold</option>
-            <option value="on_hold" ${isEditMkt && data.marketStatus==='on_hold' ? 'selected' : ''}>On Hold</option>
-          </select>
-        </div>
+
         <button class="btn btn-primary" onclick="saveMarketModel()">${isEditMkt ? 'Update' : 'Save'} Market Model</button>
       `;
       break;
@@ -5275,6 +5377,10 @@ async function modal(type, data) {
                 <span>On Boss's WhatsApp</span>
               </label>
             </div>
+          </div>
+          <div class="form-group" style="margin-top:10px">
+            <label class="form-label">Boss TG Group Link (if exists):</label>
+            <input type="text" class="form-input" id="modBossGroupLink" value="${isEditModel ? data.bossGroupLink || '' : ''}" placeholder="https://t.me/+... or group link">
           </div>
         </div>
 
@@ -6946,6 +7052,7 @@ async function saveModel() {
     onAssistantWhatsApp: document.getElementById('modOnAssistWa')?.checked || false,
     onBossTelegram: document.getElementById('modOnBossTg')?.checked || false,
     onBossWhatsApp: document.getElementById('modOnBossWa')?.checked || false,
+    bossGroupLink: document.getElementById('modBossGroupLink')?.value?.trim() || '',
 
     // Experience & Skills
     experienceDescription: document.getElementById('modExpDesc')?.value?.trim() || '',
