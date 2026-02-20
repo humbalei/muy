@@ -3894,6 +3894,91 @@ async function delPosting(id) {
 // ============================================
 // SETTINGS
 // ============================================
+// ============================================
+// SECTION VISIBILITY
+// ============================================
+let sectionVisConfig = null;
+
+const SECTION_LABELS = {
+  daily: 'Daily', ai: 'AI Chats', outreach: 'Outreach', leads: 'Leads',
+  models: 'Models', chatters: 'Chatters', spy: 'Spy', content: 'Content', posting: 'Posting'
+};
+const TAB_LABELS = {
+  'o-ig': 'Instagram', 'o-tw': 'Twitter', 'o-wc': 'Webcams', 'o-of': 'OnlyFans',
+  'o-tk': 'TikTok', 'o-os': 'OFautopilot', 'o-op': 'Openers', 'o-fu': 'Follow-ups', 'o-sc': 'Scripts'
+};
+
+const DEFAULT_SECTION_VIS = {
+  sections: { leads: false },
+  tabs: { 'o-ig': false, 'o-tw': false, 'o-wc': false, 'o-of': false, 'o-tk': false, 'o-os': false }
+};
+
+async function loadSectionVisibility() {
+  let doc = await DB.getSetting('section_visibility');
+  if (!doc) {
+    sectionVisConfig = JSON.parse(JSON.stringify(DEFAULT_SECTION_VIS));
+    await DB.saveSetting('section_visibility', sectionVisConfig);
+  } else {
+    sectionVisConfig = { sections: doc.sections || {}, tabs: doc.tabs || {} };
+  }
+  renderVisibilityToggles();
+  applySectionVisibility(sectionVisConfig);
+}
+
+function makeToggle(key, label, type) {
+  const on = sectionVisConfig[type][key] !== false;
+  return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 5px;border-bottom:1px solid #222">
+    <span style="font-size:13px">${label}</span>
+    <label class="sv-toggle">
+      <input type="checkbox" ${on ? 'checked' : ''} onchange="toggleSectionVisibility('${type}','${key}',this.checked)">
+      <span class="sv-slider"></span>
+    </label>
+  </div>`;
+}
+
+function renderVisibilityToggles() {
+  const sEl = document.getElementById('sectionToggles');
+  const tEl = document.getElementById('tabToggles');
+  if (!sEl || !tEl) return;
+  sEl.innerHTML = Object.entries(SECTION_LABELS).map(([k, l]) => makeToggle(k, l, 'sections')).join('');
+  tEl.innerHTML = Object.entries(TAB_LABELS).map(([k, l]) => makeToggle(k, l, 'tabs')).join('');
+}
+
+function applySectionVisibility(config) {
+  document.querySelectorAll('.nav-link[data-s]').forEach(el => {
+    if (el.dataset.s === 'settings') return;
+    el.style.display = (config.sections && config.sections[el.dataset.s] === false) ? 'none' : '';
+  });
+  document.querySelectorAll('#outreach .tab[data-t]').forEach(el => {
+    el.style.display = (config.tabs && config.tabs[el.dataset.t] === false) ? 'none' : '';
+  });
+  const activeNav = document.querySelector('.nav-link.active');
+  if (activeNav && activeNav.style.display === 'none') {
+    const first = document.querySelector('.nav-link:not([style*="display: none"]):not([style*="display:none"])');
+    if (first) first.click();
+  }
+  const outreach = document.getElementById('outreach');
+  if (outreach) {
+    const activeTab = outreach.querySelector('.tab.active');
+    if (activeTab && activeTab.style.display === 'none') {
+      const firstTab = outreach.querySelector('.tab:not([style*="display: none"]):not([style*="display:none"])');
+      if (firstTab) firstTab.click();
+    }
+  }
+}
+
+async function toggleSectionVisibility(type, key, val) {
+  sectionVisConfig[type][key] = val;
+  await DB.saveSetting('section_visibility', sectionVisConfig);
+  renderVisibilityToggles();
+  applySectionVisibility(sectionVisConfig);
+  const name = type === 'sections' ? SECTION_LABELS[key] : TAB_LABELS[key];
+  toast(`${name} ${val ? 'visible' : 'hidden'}`, 'success');
+}
+
+// ============================================
+// SETTINGS
+// ============================================
 async function loadSettings() {
   // Load Users
   await loadUsers();
@@ -3923,6 +4008,9 @@ async function loadSettings() {
   // Hourly Rate
   const rate = await DB.getSetting('hourly_rate');
   document.getElementById('rateInput').value = rate?.value || CONFIG.hourlyRate;
+
+  // Section Visibility
+  loadSectionVisibility();
 }
 
 // ============================================
@@ -6979,4 +7067,18 @@ function confirmDialog(message) {
 // ============================================
 // INIT
 // ============================================
-loadDaily();
+(async () => {
+  try {
+    const visDoc = await DB.getSetting('section_visibility');
+    if (visDoc && visDoc.tabs) {
+      sectionVisConfig = { sections: visDoc.sections || {}, tabs: visDoc.tabs || {} };
+    } else {
+      sectionVisConfig = JSON.parse(JSON.stringify(DEFAULT_SECTION_VIS));
+      await DB.saveSetting('section_visibility', sectionVisConfig);
+    }
+    applySectionVisibility(sectionVisConfig);
+  } catch(e) {
+    console.error('Section visibility init error:', e);
+  }
+  loadDaily();
+})();

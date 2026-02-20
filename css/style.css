@@ -1976,3 +1976,43 @@ a:hover {
   margin-right: 8px;
   margin-bottom: 5px;
 }
+
+/* === SECTION VISIBILITY TOGGLE === */
+.sv-toggle {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  cursor: pointer;
+}
+.sv-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+.sv-slider {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: #333;
+  border-radius: 12px;
+  transition: background .25s;
+}
+.sv-slider::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  background: #888;
+  border-radius: 50%;
+  transition: transform .25s, background .25s;
+}
+.sv-toggle input:checked + .sv-slider {
+  background: #0a3d0a;
+}
+.sv-toggle input:checked + .sv-slider::after {
+  transform: translateX(20px);
+  background: #0f0;
+}

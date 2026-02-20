@@ -2503,6 +2503,41 @@ async function uploadImageToR2(file) {
 }
 
 // ============================================
+// SECTION VISIBILITY (from admin settings)
+// ============================================
+function applySectionVisibility(config) {
+  document.querySelectorAll('.nav-link[data-s]').forEach(el => {
+    el.style.display = (config.sections && config.sections[el.dataset.s] === false) ? 'none' : '';
+  });
+  document.querySelectorAll('#outreach .tab[data-t]').forEach(el => {
+    el.style.display = (config.tabs && config.tabs[el.dataset.t] === false) ? 'none' : '';
+  });
+  const activeNav = document.querySelector('.nav-link.active');
+  if (activeNav && activeNav.style.display === 'none') {
+    const first = document.querySelector('.nav-link:not([style*="display: none"]):not([style*="display:none"])');
+    if (first) first.click();
+  }
+  const outreach = document.getElementById('outreach');
+  if (outreach) {
+    const activeTab = outreach.querySelector('.tab.active');
+    if (activeTab && activeTab.style.display === 'none') {
+      const firstTab = outreach.querySelector('.tab:not([style*="display: none"]):not([style*="display:none"])');
+      if (firstTab) firstTab.click();
+    }
+  }
+}
+
+// ============================================
 // INIT
 // ============================================
-loadDaily();
+(async () => {
+  try {
+    const visDoc = await DB.getSetting('section_visibility');
+    if (visDoc) {
+      applySectionVisibility({ sections: visDoc.sections || {}, tabs: visDoc.tabs || {} });
+    }
+  } catch(e) {
+    console.error('Section visibility init error:', e);
+  }
+  loadDaily();
+})();
