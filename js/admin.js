@@ -4203,13 +4203,10 @@ async function loadSettings() {
   const presets = await DB.getTaskPresets();
   let html = '';
   presets.forEach((p, i) => {
-    html += `<div class="list-item">
-      <div style="display:flex;flex-direction:column;gap:2px;margin-right:8px">
-        <button class="btn btn-sm" onclick="movePresetUp('${p.id}')" ${i === 0 ? 'disabled' : ''} style="padding:0 4px;font-size:10px;line-height:1">▲</button>
-        <button class="btn btn-sm" onclick="movePresetDown('${p.id}')" ${i === presets.length - 1 ? 'disabled' : ''} style="padding:0 4px;font-size:10px;line-height:1">▼</button>
-      </div>
+    html += `<div class="list-item preset-drag-item" data-id="${p.id}">
+      <div class="drag-handle" style="cursor:grab;margin-right:8px;font-size:16px;color:#555;user-select:none">⠿</div>
       <div style="flex:1">
-        <strong>${i+1}. ${p.name}</strong>${p.operative ? ' <span style="color:#4CAF50;font-weight:bold;font-size:11px">[OPERATIVE]</span>' : ''}
+        <strong><span class="preset-number">${i+1}</span>. ${p.name}</strong>${p.operative ? ' <span style="color:#4CAF50;font-weight:bold;font-size:11px">[OPERATIVE]</span>' : ''}
         ${p.guide ? `<div style="font-size:10px;color:#666;margin-top:3px">${p.guide.substring(0, 50)}...</div>` : ''}
         <div style="font-size:10px;color:#999">
           ${p.images ? 'Has images ' : ''}${p.video ? 'Has video' : ''}
@@ -4220,6 +4217,27 @@ async function loadSettings() {
     </div>`;
   });
   document.getElementById('presetList').innerHTML = html || '<div class="empty-state">No task presets. Add daily tasks for your assistant.</div>';
+
+  // Init drag & drop
+  if (presets.length > 1) {
+    new Sortable(document.getElementById('presetList'), {
+      handle: '.drag-handle',
+      animation: 200,
+      ghostClass: 'sortable-ghost',
+      chosenClass: 'sortable-chosen',
+      dragClass: 'sortable-drag',
+      onEnd: async function() {
+        const items = document.querySelectorAll('#presetList .preset-drag-item');
+        const updates = [];
+        items.forEach((el, i) => {
+          el.querySelector('.preset-number').textContent = i + 1;
+          updates.push(DB.update('task_presets', el.dataset.id, { order: i }));
+        });
+        await Promise.all(updates);
+        toast('Order saved', 'success');
+      }
+    });
+  }
 
   // Hourly Rate
   const rate = await DB.getSetting('hourly_rate');
@@ -4432,27 +4450,6 @@ async function delPreset(id) {
   }
 }
 
-async function movePresetUp(id) {
-  const presets = await DB.getTaskPresets();
-  const idx = presets.findIndex(p => p.id === id);
-  if (idx <= 0) return;
-  const prevOrder = presets[idx - 1].order;
-  const currOrder = presets[idx].order;
-  await DB.update('task_presets', presets[idx].id, { order: prevOrder });
-  await DB.update('task_presets', presets[idx - 1].id, { order: currOrder });
-  loadSettings();
-}
-
-async function movePresetDown(id) {
-  const presets = await DB.getTaskPresets();
-  const idx = presets.findIndex(p => p.id === id);
-  if (idx < 0 || idx >= presets.length - 1) return;
-  const nextOrder = presets[idx + 1].order;
-  const currOrder = presets[idx].order;
-  await DB.update('task_presets', presets[idx].id, { order: nextOrder });
-  await DB.update('task_presets', presets[idx + 1].id, { order: currOrder });
-  loadSettings();
-}
 
 async function saveRate() {
   await DB.saveSetting('hourly_rate', { value: parseFloat(document.getElementById('rateInput').value) });

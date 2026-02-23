@@ -805,6 +805,12 @@ a:hover {
   border-color: #0f0;
 }
 
+.drag-handle:hover { color: #0f0 !important; }
+.drag-handle:active { cursor: grabbing !important; }
+.sortable-ghost { opacity: 0.3; }
+.sortable-chosen { background: #1a1a1a; border-color: #0f0; }
+.sortable-drag { box-shadow: 0 0 10px rgba(0,255,0,0.3); }
+
 /* === TASK ITEM WITH GUIDE === */
 .task-item {
   display: flex;
