@@ -147,8 +147,6 @@ function switchAssistant(id) {
 
 async function loadDaily() {
   await loadAssistantList();
-  await recalcAllPending();
-  await loadPaymentSummary();
   await loadDayDetail();
   await loadPayroll();
   await loadWallets();
@@ -164,7 +162,7 @@ async function calcBonus(uid, date) {
   return tasks.filter(t => t.done && t.bonus > 0).reduce((sum, t) => sum + (t.bonus || 0), 0);
 }
 
-// Sync work_days.bonus and payroll amount for a given user+date
+// Sync work_days.bonus for a given user+date
 async function syncBonusAndPayroll(uid, date) {
   const bonus = await calcBonus(uid, date);
   const wds = await DB.getAll('work_days', [
@@ -173,20 +171,6 @@ async function syncBonusAndPayroll(uid, date) {
   ]);
   if (wds.length > 0) {
     await DB.update('work_days', wds[0].id, { bonus });
-    const hours = wds[0].hours || 0;
-    if (wds[0].status === 'completed') {
-      const rateSetting = await DB.getSetting('hourly_rate');
-      const rate = rateSetting?.value || CONFIG.hourlyRate || 5;
-      const amount = (hours * rate) + bonus;
-      const payrolls = await DB.getAll('payroll', [
-        { field: 'userId', value: uid },
-        { field: 'date', value: date }
-      ]);
-      const pending = payrolls.filter(p => p.status === 'pending');
-      if (pending.length > 0) {
-        await DB.update('payroll', pending[0].id, { hours, bonus, amount });
-      }
-    }
   }
 }
 
@@ -284,16 +268,6 @@ async function setDayStatus(status) {
     dayData = newDay;
   }
 
-  // If marking as completed, create pending payment with bonus
-  if (newStatus === 'completed') {
-    await createPendingPayment(curDate, dayData.hours || 0, bonus);
-  }
-
-  // If un-completing, remove pending payment
-  if (status === 'completed' && newStatus === 'planned') {
-    await removePendingPayment(curDate);
-  }
-
   toast('Day status updated', 'success');
   loadDayDetail();
   loadCalendar();
@@ -380,16 +354,10 @@ async function saveDayReport() {
     });
   }
 
-  // If day is completed, update the pending payment with bonus
-  if (dayStatus === 'completed') {
-    await createPendingPayment(curDate, hours, bonus);
-  }
-
   toast('Report saved!', 'success');
   loadDayDetail();
   loadCalendar();
   loadPayroll();
-  loadPaymentSummary();
 }
 
 // Plan next 7 days as work days
@@ -559,7 +527,6 @@ async function toggleManualTask(id, done) {
     loadTasks();
     loadDayDetail();
     loadPayroll();
-    loadPaymentSummary();
   } catch (e) {
     console.error('Toggle manual task error:', e);
     toast('Error toggling task', 'error');
@@ -573,7 +540,6 @@ async function deleteManualTask(id) {
     loadTasks();
     loadDayDetail();
     loadPayroll();
-    loadPaymentSummary();
     toast('Task deleted', 'success');
   }
 }
@@ -582,199 +548,62 @@ async function deleteManualTask(id) {
 // --- PAYROLL ---
 async function loadPayroll() {
   try {
-    // Get payroll without orderBy to avoid index requirement
-    const payrolls = await DB.getAll('payroll', [{ field: 'userId', value: userId }]);
-    const pendingPayrolls = payrolls.filter(p => p.status === 'pending').sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-    const paidPayrolls = payrolls.filter(p => p.status === 'paid').sort((a, b) => (b.paidAt?.seconds || 0) - (a.paidAt?.seconds || 0));
-
-  const pendingAmount = pendingPayrolls.reduce((sum, p) => sum + (p.amount || 0), 0);
-  const paidAmount = paidPayrolls.reduce((sum, p) => sum + (p.amount || 0), 0);
-
-  // Update totals
-  document.getElementById('pendingTotal').textContent = '$' + pendingAmount.toFixed(2);
-  document.getElementById('paidTotal').textContent = '$' + paidAmount.toFixed(2) + ' paid';
-
-  // Pending payments
-  let pendHtml = '';
-  pendingPayrolls.forEach(p => {
-    pendHtml += `<div class="payroll-item">
-      <div style="flex:1">
-        <div class="payroll-amount">$${(p.amount || 0).toFixed(2)}</div>
-        <div class="payroll-info">${p.date || 'Unknown date'} • ${p.hours || 0}h${p.bonus > 0 ? ' + $' + p.bonus + ' bonus' : ''}</div>
-      </div>
-      <button class="btn btn-sm btn-primary" onclick="markPaid('${p.id}')">Mark Paid</button>
-    </div>`;
-  });
-  document.getElementById('payrollPending').innerHTML = pendHtml || '<div class="empty-state">No pending payments</div>';
-
-  // History
-  let histHtml = '';
-  paidPayrolls.forEach(p => {
-    const paidDate = p.paidAt ? new Date(p.paidAt.seconds * 1000).toLocaleDateString() : '-';
-    histHtml += `<div class="payroll-item">
-      <div style="flex:1">
-        <div class="payroll-amount">$${(p.amount || 0).toFixed(2)}</div>
-        <div class="payroll-info">${p.date || ''} • Paid: ${paidDate}</div>
-      </div>
-      <span class="payroll-status paid">Paid</span>
-    </div>`;
-  });
-  document.getElementById('payrollHistory').innerHTML = histHtml || '<div class="empty-state">No payment history</div>';
-  } catch (e) {
-    console.error('Payroll error:', e);
-    document.getElementById('payrollPending').innerHTML = '<div class="empty-state">Error loading payroll</div>';
-    document.getElementById('payrollHistory').innerHTML = '';
-  }
-}
-
-async function markPaid(id) {
-  if (await confirmDialog('Mark this payment as paid?')) {
-    await DB.update('payroll', id, { status: 'paid', paidAt: new Date() });
-    toast('Payment marked as paid', 'success');
-    loadPayroll();
-    loadPaymentSummary();
-  }
-}
-
-// --- SYNC PAYROLL: create missing payroll records for all work days with hours ---
-async function recalcAllPending() {
-  try {
     const rateSetting = await DB.getSetting('hourly_rate');
     const rate = rateSetting?.value || CONFIG.hourlyRate || 5;
 
-    const allPayrolls = await DB.getAll('payroll');
-    const allWorkDays = await DB.getAll('work_days');
-    const allManualTasks = await DB.getAll('manual_tasks');
+    // Get all completed work days for this assistant
+    const allWorkDays = await DB.getAll('work_days', [{ field: 'userId', value: userId }]);
+    const completedDays = allWorkDays.filter(w => w.status === 'completed' && ((w.hours || 0) > 0 || (w.bonus || 0) > 0));
 
-    // Get admin users to exclude
-    const snapshot = await DB.db.collection('users').get();
-    const adminUsers = [];
-    snapshot.forEach(doc => { if (doc.data().role === 'admin') adminUsers.push(doc.id); });
-
-    // Build bonus lookup from manual_tasks: key = "userId_date" -> bonus sum
+    // Get bonus data from manual_tasks
+    const allManualTasks = await DB.getAll('manual_tasks', [{ field: 'userId', value: userId }]);
     const bonusMap = {};
     allManualTasks.filter(t => t.done && t.bonus > 0).forEach(t => {
-      const key = `${t.userId}_${t.date}`;
-      bonusMap[key] = (bonusMap[key] || 0) + (t.bonus || 0);
+      bonusMap[t.date] = (bonusMap[t.date] || 0) + (t.bonus || 0);
     });
 
-    // All completed days where hours were logged, excluding admins
-    const workedDays = allWorkDays.filter(w => {
-      const bonus = bonusMap[`${w.userId}_${w.date}`] || w.bonus || 0;
-      return w.status === 'completed' && ((w.hours || 0) > 0 || bonus > 0) && !adminUsers.includes(w.userId);
+    // Get all payments
+    const allPayments = await DB.getAll('payroll', [{ field: 'userId', value: userId }, { field: 'type', value: 'payment' }]);
+
+    // Build set of paid dates
+    const paidDates = new Set();
+    allPayments.forEach(p => {
+      if (p.days && Array.isArray(p.days)) {
+        p.days.forEach(d => paidDates.add(d));
+      }
     });
 
-    for (const wd of workedDays) {
+    // Calculate owed days
+    const owedDays = [];
+    let totalOwed = 0;
+    completedDays.forEach(wd => {
+      if (paidDates.has(wd.date)) return;
       const hours = wd.hours || 0;
-      // Use manual_tasks bonus (source of truth), fallback to work_days.bonus
-      const bonus = bonusMap[`${wd.userId}_${wd.date}`] || wd.bonus || 0;
-      const correctAmount = (hours * rate) + bonus;
-
-      // Also sync work_days.bonus if it differs
-      if (Math.abs((wd.bonus || 0) - bonus) > 0.001) {
-        await DB.update('work_days', wd.id, { bonus });
-      }
-
-      const existing = allPayrolls.find(p => p.userId === wd.userId && p.date === wd.date);
-
-      if (!existing) {
-        await DB.add('payroll', {
-          userId: wd.userId,
-          date: wd.date,
-          hours: hours,
-          bonus: bonus,
-          amount: correctAmount,
-          status: 'pending',
-          createdAt: new Date()
-        });
-        console.log(`Created missing payment: ${wd.userId} ${wd.date} -> $${correctAmount}`);
-      } else if (existing.status === 'pending') {
-        if (Math.abs((existing.amount || 0) - correctAmount) > 0.001) {
-          await DB.update('payroll', existing.id, { hours, bonus, amount: correctAmount });
-          console.log(`Fixed payment ${existing.id}: ${wd.userId} ${wd.date} -> $${correctAmount}`);
-        }
-      }
-    }
-  } catch (e) {
-    console.error('recalcAllPending error:', e);
-  }
-}
-
-// --- PAYMENT SUMMARY (all assistants) ---
-async function loadPaymentSummary() {
-  try {
-    const rateSetting = await DB.getSetting('hourly_rate');
-    const rate = rateSetting?.value || CONFIG.hourlyRate || 5;
-
-    const allWorkDays = await DB.getAll('work_days');
-    const allPayrolls = await DB.getAll('payroll');
-    const allManualTasks = await DB.getAll('manual_tasks');
-
-    // Build bonus lookup from manual_tasks
-    const bonusMap = {};
-    allManualTasks.filter(t => t.done && t.bonus > 0).forEach(t => {
-      const key = `${t.userId}_${t.date}`;
-      bonusMap[key] = (bonusMap[key] || 0) + (t.bonus || 0);
+      const bonus = bonusMap[wd.date] || wd.bonus || 0;
+      const amount = (hours * rate) + bonus;
+      totalOwed += amount;
+      owedDays.push({ date: wd.date, hours, bonus, amount, report: wd.report || '' });
     });
+    owedDays.sort((a, b) => b.date.localeCompare(a.date));
 
-    // Get admin users to exclude them
-    const snapshot = await DB.db.collection('users').get();
-    const adminUsers = [];
-    snapshot.forEach(doc => { if (doc.data().role === 'admin') adminUsers.push(doc.id); });
-    // All completed days with hours or bonus logged, excluding admins
-    const workedDays = allWorkDays.filter(w => {
-      const bonus = bonusMap[`${w.userId}_${w.date}`] || w.bonus || 0;
-      return w.status === 'completed' && ((w.hours || 0) > 0 || bonus > 0) && !adminUsers.includes(w.userId);
-    });
+    // --- RENDER OWED SECTION ---
+    document.getElementById('owedInfo').textContent = owedDays.length + ' unpaid day' + (owedDays.length !== 1 ? 's' : '') + ' \u2022 $' + rate + '/hr';
 
-    // Group by userId with day details
-    const byUser = {};
-    workedDays.forEach(wd => {
-      const uid = wd.userId || 'unknown';
-      if (!byUser[uid]) byUser[uid] = { totalEarned: 0, totalPaid: 0, unpaidDays: [], paidDays: [] };
-      const hours = wd.hours || 0;
-      const bonus = bonusMap[`${wd.userId}_${wd.date}`] || wd.bonus || 0;
-      const dayAmount = (hours * rate) + bonus;
-      byUser[uid].totalEarned += dayAmount;
+    let owedHtml = '';
+    if (owedDays.length === 0) {
+      owedHtml = '<div class="empty-state">All paid up!</div>';
+    } else {
+      owedHtml += `<div style="text-align:center;padding:15px 0">
+        <div style="font-size:32px;font-weight:bold;color:#ff0;font-family:'Courier New',monospace">$${totalOwed.toFixed(2)}</div>
+        <div style="color:#666;font-size:12px;margin-top:4px">${owedDays.length} day${owedDays.length !== 1 ? 's' : ''} unpaid</div>
+        <button class="btn btn-primary" style="margin-top:12px;font-size:14px;padding:10px 30px" onclick="payAll()">Pay All $${totalOwed.toFixed(2)}</button>
+      </div>`;
 
-      const payrollEntry = allPayrolls.find(p => p.userId === wd.userId && p.date === wd.date && p.status === 'paid');
-      if (payrollEntry) {
-        byUser[uid].totalPaid += (payrollEntry.amount || 0);
-        byUser[uid].paidDays.push({ date: wd.date, hours, bonus, amount: dayAmount, report: wd.report || '' });
-      } else {
-        byUser[uid].unpaidDays.push({ date: wd.date, hours, bonus, amount: dayAmount, report: wd.report || '', status: wd.status });
-      }
-    });
-
-    let grandTotalOwed = 0;
-    const userIds = Object.keys(byUser).sort();
-    userIds.forEach(uid => {
-      byUser[uid].owed = byUser[uid].totalEarned - byUser[uid].totalPaid;
-      grandTotalOwed += byUser[uid].owed;
-    });
-
-    document.getElementById('summaryTotalPending').textContent = '$' + grandTotalOwed.toFixed(2) + ' total owed';
-
-    if (userIds.length === 0) {
-      document.getElementById('paymentSummary').innerHTML = '<div class="empty-state">No work days with hours</div>';
-      return;
-    }
-
-    let html = '';
-    userIds.forEach(uid => {
-      const u = byUser[uid];
-      if (u.owed <= 0) return;
-
-      // Sort unpaid days by date descending
-      u.unpaidDays.sort((a, b) => b.date.localeCompare(a.date));
-
-      // Build day rows
-      let daysHtml = '';
-      u.unpaidDays.forEach(d => {
+      owedHtml += '<div style="margin-top:10px;border-top:1px solid #222;padding-top:10px">';
+      owedDays.forEach(d => {
         const bonusStr = d.bonus > 0 ? ` + $${d.bonus} bonus` : '';
-        const reportHtml = d.report ? `<div style="color:#888;font-size:11px;margin-top:4px;padding:6px 8px;background:#0a0a0a;border-radius:3px;white-space:pre-wrap">${escapeHtml(d.report)}</div>` : '';
-        const editId = `edit-${uid}-${d.date}`;
-        daysHtml += `<div style="padding:8px 0;border-bottom:1px solid #1a1a1a">
+        const editId = `owed-${d.date}`;
+        owedHtml += `<div style="padding:8px 0;border-bottom:1px solid #1a1a1a">
           <div style="display:flex;justify-content:space-between;align-items:center">
             <div>
               <span style="color:#0f0;font-family:'Courier New',monospace">${d.date}</span>
@@ -782,12 +611,11 @@ async function loadPaymentSummary() {
               <span style="color:#ff0;font-weight:bold;margin-left:8px">$${d.amount.toFixed(2)}</span>
             </div>
             <div style="display:flex;gap:4px">
-              <button class="btn btn-sm btn-primary" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation(); payDay('${uid}','${d.date}')">Pay</button>
-              <button class="btn btn-sm" style="font-size:10px;padding:3px 8px" onclick="event.stopPropagation(); document.getElementById('${editId}').style.display = document.getElementById('${editId}').style.display === 'none' ? 'flex' : 'none'">Edit</button>
-              <button class="btn btn-sm" style="font-size:10px;padding:3px 8px;border-color:#f55;color:#f55" onclick="event.stopPropagation(); deleteDay('${uid}','${d.date}')">Del</button>
+              <button class="btn btn-sm" style="font-size:10px;padding:3px 8px" onclick="document.getElementById('${editId}').style.display = document.getElementById('${editId}').style.display === 'none' ? 'flex' : 'none'">Edit</button>
+              <button class="btn btn-sm" style="font-size:10px;padding:3px 8px;border-color:#f55;color:#f55" onclick="deleteDay('${d.date}')">Del</button>
             </div>
           </div>
-          ${reportHtml}
+          ${d.report ? `<div style="color:#888;font-size:11px;margin-top:4px;padding:6px 8px;background:#0a0a0a;border-radius:3px;white-space:pre-wrap">${escapeHtml(d.report)}</div>` : ''}
           <div id="${editId}" style="display:none;flex-wrap:wrap;gap:6px;margin-top:6px;padding:8px;background:#111;border:1px solid #333;border-radius:4px">
             <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;width:100%">
               <label style="color:#666;font-size:11px">Hours:</label>
@@ -798,83 +626,157 @@ async function loadPaymentSummary() {
             <div style="width:100%;margin-top:4px">
               <textarea id="${editId}-report" style="width:100%;background:#000;border:1px solid #333;color:#999;padding:4px;font-size:11px;min-height:50px;resize:vertical">${escapeHtml(d.report)}</textarea>
             </div>
-            <button class="btn btn-sm btn-primary" style="font-size:11px;margin-top:4px" onclick="event.stopPropagation(); saveDay('${uid}','${d.date}','${editId}')">Save</button>
+            <button class="btn btn-sm btn-primary" style="font-size:11px;margin-top:4px" onclick="saveDay('${d.date}','${editId}')">Save</button>
           </div>
         </div>`;
       });
+      owedHtml += '</div>';
+    }
+    document.getElementById('owedSection').innerHTML = owedHtml;
 
-      const detailId = 'summary-detail-' + uid;
-      html += `<div style="border-bottom:1px solid #333;padding:12px 0">
-        <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="document.getElementById('${detailId}').style.display = document.getElementById('${detailId}').style.display === 'none' ? 'block' : 'none'">
-          <div>
-            <div style="display:flex;align-items:center;gap:10px">
-              <strong style="color:#0f0;font-family:'Courier New',monospace;font-size:15px">@${uid}</strong>
-              <span style="color:#ff0;font-size:16px;font-weight:bold">$${u.owed.toFixed(2)}</span>
-            </div>
-            <div style="color:#666;font-size:11px;margin-top:3px">${u.unpaidDays.length} unpaid day${u.unpaidDays.length !== 1 ? 's' : ''} • Total earned: $${u.totalEarned.toFixed(2)} • Paid: $${u.totalPaid.toFixed(2)} • Click to expand</div>
-          </div>
-          <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); markAllPaid('${uid}')">Pay $${u.owed.toFixed(2)}</button>
-        </div>
-        <div id="${detailId}" style="display:none;margin-top:10px;padding:8px;background:#0d0d0d;border:1px solid #222;border-radius:4px;max-height:400px;overflow-y:auto">
-          ${daysHtml}
-        </div>
-      </div>`;
+    // --- RENDER PAYMENT HISTORY ---
+    const sortedPayments = [...allPayments].sort((a, b) => {
+      const aTime = a.paidAt?.seconds || a.createdAt?.seconds || 0;
+      const bTime = b.paidAt?.seconds || b.createdAt?.seconds || 0;
+      return bTime - aTime;
     });
 
-    if (!html) {
-      html = '<div class="empty-state">All payments up to date</div>';
-    }
+    let totalPaidEver = sortedPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+    document.getElementById('totalPaidEver').textContent = '$' + totalPaidEver.toFixed(2) + ' total paid';
 
-    document.getElementById('paymentSummary').innerHTML = html;
+    let histHtml = '';
+    if (sortedPayments.length === 0) {
+      histHtml = '<div class="empty-state">No payment history yet</div>';
+    } else {
+      sortedPayments.forEach(p => {
+        const paidDate = p.paidAt ? new Date(p.paidAt.seconds * 1000).toLocaleDateString() : (p.createdAt ? new Date(p.createdAt.seconds * 1000).toLocaleDateString() : '-');
+        const dayCount = p.dayCount || (p.days ? p.days.length : 0);
+        const detailId = 'payment-' + p.id;
+
+        histHtml += `<div class="payroll-item" style="flex-direction:column;align-items:stretch">
+          <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="document.getElementById('${detailId}').style.display = document.getElementById('${detailId}').style.display === 'none' ? 'block' : 'none'">
+            <div>
+              <div class="payroll-amount">$${(p.amount || 0).toFixed(2)}</div>
+              <div class="payroll-info">Paid: ${paidDate} \u2022 ${dayCount} day${dayCount !== 1 ? 's' : ''}${p.note ? ' \u2022 ' + p.note : ''}</div>
+            </div>
+            <div style="display:flex;gap:4px;align-items:center">
+              <span class="payroll-status paid">Paid</span>
+              <button class="btn btn-sm" style="font-size:9px;padding:2px 6px;border-color:#f55;color:#f55" onclick="event.stopPropagation(); deletePayment('${p.id}')">X</button>
+            </div>
+          </div>
+          <div id="${detailId}" style="display:none;margin-top:8px;padding:8px;background:#0a0a0a;border:1px solid #1a1a1a;border-radius:3px;font-size:11px;color:#666">
+            ${p.days && p.days.length > 0 ? p.days.sort().map(d => `<div style="padding:2px 0">${d}</div>`).join('') : '<div>No day details</div>'}
+          </div>
+        </div>`;
+      });
+    }
+    document.getElementById('paymentHistory').innerHTML = histHtml;
+
+    // --- RENDER STATS ---
+    const allCompletedHours = completedDays.reduce((sum, w) => sum + (w.hours || 0), 0);
+    const totalDaysWorked = completedDays.length;
+    const totalBonusAll = Object.values(bonusMap).reduce((s, b) => s + b, 0);
+    const avgPerDay = totalDaysWorked > 0 ? ((allCompletedHours * rate) + totalBonusAll) / totalDaysWorked : 0;
+
+    document.getElementById('payrollStats').innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px;text-align:center">
+        <div>
+          <div style="font-size:20px;font-weight:bold;color:#0f0">$${totalPaidEver.toFixed(2)}</div>
+          <div style="color:#666;font-size:11px">Total Paid</div>
+        </div>
+        <div>
+          <div style="font-size:20px;font-weight:bold;color:#0f0">${allCompletedHours.toFixed(1)}h</div>
+          <div style="color:#666;font-size:11px">Total Hours</div>
+        </div>
+        <div>
+          <div style="font-size:20px;font-weight:bold;color:#0f0">$${avgPerDay.toFixed(2)}</div>
+          <div style="color:#666;font-size:11px">Avg/Day</div>
+        </div>
+      </div>`;
+
   } catch (e) {
-    console.error('Payment summary error:', e);
-    document.getElementById('paymentSummary').innerHTML = '<div class="empty-state">Error loading summary</div>';
+    console.error('Payroll error:', e);
+    document.getElementById('owedSection').innerHTML = '<div class="empty-state">Error loading payroll</div>';
   }
 }
 
-// Pay single day
-async function payDay(assistantId, date) {
-  if (await confirmDialog(`Mark ${date} for @${assistantId} as paid?`)) {
+// Pay all owed days at once
+async function payAll() {
+  try {
+    const rateSetting = await DB.getSetting('hourly_rate');
+    const rate = rateSetting?.value || CONFIG.hourlyRate || 5;
+
+    const allWorkDays = await DB.getAll('work_days', [{ field: 'userId', value: userId }]);
+    const completedDays = allWorkDays.filter(w => w.status === 'completed' && ((w.hours || 0) > 0 || (w.bonus || 0) > 0));
+
+    const allManualTasks = await DB.getAll('manual_tasks', [{ field: 'userId', value: userId }]);
+    const bonusMap = {};
+    allManualTasks.filter(t => t.done && t.bonus > 0).forEach(t => {
+      bonusMap[t.date] = (bonusMap[t.date] || 0) + (t.bonus || 0);
+    });
+
+    const allPayments = await DB.getAll('payroll', [{ field: 'userId', value: userId }, { field: 'type', value: 'payment' }]);
+    const paidDates = new Set();
+    allPayments.forEach(p => {
+      if (p.days) p.days.forEach(d => paidDates.add(d));
+    });
+
+    const owedDays = [];
+    let totalOwed = 0;
+    completedDays.forEach(wd => {
+      if (paidDates.has(wd.date)) return;
+      const hours = wd.hours || 0;
+      const bonus = bonusMap[wd.date] || wd.bonus || 0;
+      const amount = (hours * rate) + bonus;
+      totalOwed += amount;
+      owedDays.push(wd.date);
+    });
+
+    if (owedDays.length === 0) {
+      toast('Nothing to pay', 'info');
+      return;
+    }
+
+    if (await confirmDialog(`Pay $${totalOwed.toFixed(2)} for ${owedDays.length} day${owedDays.length !== 1 ? 's' : ''}?`)) {
+      await DB.add('payroll', {
+        type: 'payment',
+        userId: userId,
+        amount: totalOwed,
+        days: owedDays.sort(),
+        dayCount: owedDays.length,
+        note: '',
+        paidAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      toast(`Paid $${totalOwed.toFixed(2)} for ${owedDays.length} days`, 'success');
+      loadPayroll();
+    }
+  } catch (e) {
+    console.error('payAll error:', e);
+    toast('Error processing payment', 'error');
+  }
+}
+
+// Delete a payment (days return to owed)
+async function deletePayment(id) {
+  if (await confirmDialog('Delete this payment? The days will return to unpaid.')) {
     try {
-      const payrolls = await DB.getAll('payroll', [
-        { field: 'userId', value: assistantId },
-        { field: 'date', value: date }
-      ]);
-      const pending = payrolls.filter(p => p.status === 'pending');
-      if (pending.length > 0) {
-        await DB.update('payroll', pending[0].id, { status: 'paid', paidAt: new Date() });
-      } else {
-        // Create paid record if none exists
-        const rateSetting = await DB.getSetting('hourly_rate');
-        const rate = rateSetting?.value || CONFIG.hourlyRate || 5;
-        const wds = await DB.getAll('work_days', [{ field: 'userId', value: assistantId }, { field: 'date', value: date }]);
-        const wd = wds[0];
-        const hours = wd?.hours || 0;
-        const bonus = await calcBonus(assistantId, date);
-        await DB.add('payroll', { userId: assistantId, date, hours, bonus, amount: (hours * rate) + bonus, status: 'paid', paidAt: new Date() });
-      }
-      toast(`${date} marked as paid`, 'success');
-      loadPaymentSummary();
+      await DB.delete('payroll', id);
+      toast('Payment deleted', 'success');
       loadPayroll();
     } catch (e) {
-      console.error('payDay error:', e);
-      toast('Error', 'error');
+      console.error('deletePayment error:', e);
+      toast('Error deleting payment', 'error');
     }
   }
 }
 
-// Delete day (remove work_day + payroll record)
-async function deleteDay(assistantId, date) {
-  if (await confirmDialog(`Delete work day ${date} for @${assistantId}? This removes the day and its payment.`)) {
+// Delete work day
+async function deleteDay(date) {
+  if (await confirmDialog(`Delete work day ${date}?`)) {
     try {
-      // Delete work_day
-      const wds = await DB.getAll('work_days', [{ field: 'userId', value: assistantId }, { field: 'date', value: date }]);
+      const wds = await DB.getAll('work_days', [{ field: 'userId', value: userId }, { field: 'date', value: date }]);
       for (const w of wds) await DB.delete('work_days', w.id);
-      // Delete payroll
-      const payrolls = await DB.getAll('payroll', [{ field: 'userId', value: assistantId }, { field: 'date', value: date }]);
-      for (const p of payrolls) await DB.delete('payroll', p.id);
       toast(`${date} deleted`, 'success');
-      loadPaymentSummary();
       loadPayroll();
       loadCalendar();
     } catch (e) {
@@ -884,137 +786,27 @@ async function deleteDay(assistantId, date) {
   }
 }
 
-// Edit day (update hours, bonus, report)
-async function saveDay(assistantId, date, editId) {
+// Edit work day (hours, bonus, report)
+async function saveDay(date, editId) {
   try {
     const hours = parseFloat(document.getElementById(editId + '-hours').value) || 0;
     const bonus = parseFloat(document.getElementById(editId + '-bonus').value) || 0;
     const report = document.getElementById(editId + '-report').value.trim();
 
-    const rateSetting = await DB.getSetting('hourly_rate');
-    const rate = rateSetting?.value || CONFIG.hourlyRate || 5;
-    const amount = (hours * rate) + bonus;
-
-    // Update work_day
-    const wds = await DB.getAll('work_days', [{ field: 'userId', value: assistantId }, { field: 'date', value: date }]);
+    const wds = await DB.getAll('work_days', [{ field: 'userId', value: userId }, { field: 'date', value: date }]);
     if (wds.length > 0) {
       await DB.update('work_days', wds[0].id, { hours, bonus, report });
     }
 
-    // Update payroll if exists
-    const payrolls = await DB.getAll('payroll', [{ field: 'userId', value: assistantId }, { field: 'date', value: date }]);
-    const pending = payrolls.filter(p => p.status === 'pending');
-    if (pending.length > 0) {
-      await DB.update('payroll', pending[0].id, { hours, bonus, amount });
-    }
+    const rateSetting = await DB.getSetting('hourly_rate');
+    const rate = rateSetting?.value || CONFIG.hourlyRate || 5;
+    const amount = (hours * rate) + bonus;
 
     toast(`${date} updated: $${amount.toFixed(2)}`, 'success');
-    loadPaymentSummary();
     loadPayroll();
   } catch (e) {
     console.error('saveDay error:', e);
     toast('Error saving', 'error');
-  }
-}
-
-async function markAllPaid(assistantId) {
-  if (await confirmDialog(`Mark ALL pending payments for @${assistantId} as paid?`)) {
-    try {
-      const payrolls = await DB.getAll('payroll', [
-        { field: 'userId', value: assistantId },
-      ]);
-      const pending = payrolls.filter(p => p.status === 'pending');
-      for (const p of pending) {
-        await DB.update('payroll', p.id, { status: 'paid', paidAt: new Date() });
-      }
-      toast(`${pending.length} payment(s) for @${assistantId} marked as paid`, 'success');
-      loadPayroll();
-      loadPaymentSummary();
-    } catch (e) {
-      console.error('Mark all paid error:', e);
-      toast('Error marking payments', 'error');
-    }
-  }
-}
-
-// --- DATA CLEANUP & SEED (call from console: cleanAndSeed()) ---
-async function cleanAndSeed() {
-  if (!await confirmDialog('DELETE all old payroll + work_days data and create fresh data from Feb 16?')) return;
-
-  try {
-    toast('Cleaning old data...', 'info');
-
-    // 1. Delete ALL payroll records
-    const allPayrolls = await DB.getAll('payroll');
-    for (const p of allPayrolls) {
-      await DB.delete('payroll', p.id);
-    }
-    console.log(`Deleted ${allPayrolls.length} payroll records`);
-
-    // 2. Delete ALL work_days records that have hours or amounts
-    const allWorkDays = await DB.getAll('work_days');
-    for (const w of allWorkDays) {
-      await DB.delete('work_days', w.id);
-    }
-    console.log(`Deleted ${allWorkDays.length} work_days records`);
-
-    // 3. Delete ALL manual_tasks records
-    const allManualTasks = await DB.getAll('manual_tasks');
-    for (const t of allManualTasks) {
-      await DB.delete('manual_tasks', t.id);
-    }
-    console.log(`Deleted ${allManualTasks.length} manual_tasks records`);
-
-    // 4. Delete ALL daily_tasks records
-    const allDailyTasks = await DB.getAll('daily_tasks');
-    for (const t of allDailyTasks) {
-      await DB.delete('daily_tasks', t.id);
-    }
-    console.log(`Deleted ${allDailyTasks.length} daily_tasks records`);
-
-    // 5. Seed new data for "muy" from Feb 16
-    const rateSetting = await DB.getSetting('hourly_rate');
-    const rate = rateSetting?.value || CONFIG.hourlyRate || 2.5;
-
-    const seedData = [
-      { date: '2026-02-16', hours: 7, status: 'completed', report: 'Outreach + content work' },
-      { date: '2026-02-17', hours: 6, status: 'completed', report: 'Instagram DMs + follow-ups' },
-      { date: '2026-02-18', hours: 4, status: 'planned', report: '' },
-    ];
-
-    for (const day of seedData) {
-      // Create work_day
-      await DB.add('work_days', {
-        userId: 'muy',
-        date: day.date,
-        status: day.status,
-        hours: day.hours,
-        report: day.report,
-        bonus: 0,
-        createdAt: new Date()
-      });
-
-      // Create payroll for completed days
-      if (day.status === 'completed' && day.hours > 0) {
-        const amount = day.hours * rate;
-        await DB.add('payroll', {
-          userId: 'muy',
-          date: day.date,
-          hours: day.hours,
-          bonus: 0,
-          amount: amount,
-          status: 'pending',
-          createdAt: new Date()
-        });
-        console.log(`Created: ${day.date} - ${day.hours}h - $${amount}`);
-      }
-    }
-
-    toast('Done! Fresh data from Feb 16 created.', 'success');
-    loadDaily();
-  } catch (e) {
-    console.error('cleanAndSeed error:', e);
-    toast('Error: ' + e.message, 'error');
   }
 }
 

@@ -197,36 +197,34 @@
 
       <!-- Payroll Tab -->
       <div id="t-payroll" class="tab-content">
-        <!-- Payment Summary across ALL assistants -->
+        <!-- Owed Amount -->
         <div class="box">
           <div class="box-header">
-            <span>Payment Summary</span>
-            <span style="font-size:11px;color:#ff0" id="summaryTotalPending">$0 total pending</span>
+            <span>Amount Owed</span>
+            <span style="font-size:11px;color:#ff0" id="owedInfo"></span>
           </div>
-          <div class="box-body" id="paymentSummary">
-            <div class="empty-state">Loading...</div>
-          </div>
+          <div class="box-body" id="owedSection"></div>
         </div>
 
+        <!-- Wallets -->
         <div class="box" style="margin-top:15px">
           <div class="box-header">Wallets <button class="btn btn-sm btn-primary" onclick="modal('wallet')">Add Wallet</button></div>
           <div class="box-body" id="walletList"></div>
         </div>
 
-        <div class="box" style="margin-top:15px">
-          <div class="box-header">
-            <span>Pending Payments</span>
-            <span style="font-size:11px;color:#ff0" id="pendingTotal">$0</span>
-          </div>
-          <div class="box-body" id="payrollPending"></div>
-        </div>
-
+        <!-- Payment History -->
         <div class="box" style="margin-top:15px">
           <div class="box-header">
             <span>Payment History</span>
-            <span style="font-size:11px;color:#0f0" id="paidTotal">$0 paid</span>
+            <span style="font-size:11px;color:#0f0" id="totalPaidEver">$0 total paid</span>
           </div>
-          <div class="box-body" id="payrollHistory" style="max-height:300px;overflow-y:auto"></div>
+          <div class="box-body" id="paymentHistory" style="max-height:500px;overflow-y:auto"></div>
+        </div>
+
+        <!-- Stats -->
+        <div class="box" style="margin-top:15px">
+          <div class="box-header">Stats</div>
+          <div class="box-body" id="payrollStats"></div>
         </div>
       </div>
     </div>
@@ -944,7 +942,7 @@
   <script src="js/db.js?v=1009"></script>
   <script src="js/video-spoof.js?v=1009"></script>
   <script src="js/photo-spoof.js?v=1010"></script>
-  <script src="js/admin.js?v=1024"></script>
+  <script src="js/admin.js?v=1025"></script>
 
   <!-- PWA Service Worker Registration - DISABLED for stability -->
   <script>
