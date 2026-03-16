@@ -47,6 +47,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     const section = parent.closest('.section');
     section.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     document.getElementById(tab.dataset.t).classList.add('active');
+    if (tab.dataset.t === 's-mindmap') loadMindmap();
   };
 });
 
@@ -146,6 +147,7 @@ function switchAssistant(id) {
 }
 
 async function loadDaily() {
+  loadMindmap(); // start realtime listener if not yet running
   await loadAssistantList();
   await loadDayDetail();
   await loadPayroll();
@@ -4035,6 +4037,9 @@ async function loadSettings() {
   const rate = await DB.getSetting('hourly_rate');
   document.getElementById('rateInput').value = rate?.value || CONFIG.hourlyRate;
 
+  // Mindmap
+  loadMindmap();
+
   // Section Visibility
   loadSectionVisibility();
 }
@@ -5393,6 +5398,40 @@ async function modal(type, data) {
         <button class="btn btn-primary" onclick="savePreset()">Save Task</button>
       `;
       break;
+
+    case 'mmAddNode': {
+      const isEdit = !!data?.editId;
+      const isRoot = !data?.parentId && !isEdit;
+      title.textContent = isEdit ? 'Edit Node' : 'Add Node';
+      body.innerHTML = `
+        <input type="hidden" id="mmNodeParentId" value="${data?.parentId || ''}">
+        <input type="hidden" id="mmNodeEditId" value="${data?.editId || ''}">
+        <div class="form-group">
+          <label class="form-label">Name:</label>
+          <input type="text" class="form-input" id="mmNodeLabel" placeholder="e.g. Morning Start, Check DMs, Post Story" value="${data?.label || ''}" autofocus>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tag <span style="color:#555;font-size:10px">(emoji or short tag — shown on node)</span>:</label>
+          <input type="text" class="form-input" id="mmNodeTag" placeholder="🌅 or #morning" value="${data?.tag || data?.emoji || ''}" style="width:150px">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description <span style="color:#555;font-size:10px">(instructions shown to assistant on click)</span>:</label>
+          <textarea class="form-textarea" id="mmNodeDesc" style="min-height:80px" placeholder="Step-by-step instructions for this task...">${data?.description || ''}</textarea>
+        </div>
+        ${isRoot ? `<div class="form-group">
+          <label class="form-label">Color:</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:5px">
+            ${['#ff9500','#0f0','#0af','#f5a','#f55','#ff0','#a0f','#0fa'].map(c => `
+              <div onclick="selectMmColor('${c}')" data-mm-color="${c}" style="width:28px;height:28px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${data?.color === c ? '#fff' : 'transparent'};transition:border .15s"></div>
+            `).join('')}
+          </div>
+          <input type="hidden" id="mmNodeColor" value="${data?.color || '#0f0'}">
+        </div>` : ''}
+        <button class="btn btn-primary" onclick="saveMmNode()">${isEdit ? 'Update' : 'Add'}</button>
+      `;
+      if (data?.color) setTimeout(() => selectMmColor(data.color), 50);
+      break;
+    }
 
     case 'wallet':
       title.textContent = 'Add Wallet';
@@ -7158,6 +7197,229 @@ function confirmDialog(message) {
     overlay.querySelector('.confirm-no').onclick = () => { overlay.remove(); resolve(false); };
     overlay.onclick = (e) => { if (e.target === overlay) { overlay.remove(); resolve(false); } };
   });
+}
+
+// ============================================
+// MINDMAP BUILDER (Admin)
+// ============================================
+
+// ============================================
+// MINDMAP ADMIN — visual canvas builder
+// ============================================
+
+let mmAdminNodes = [];
+let mmAdminSelected = null;
+let mmAdminUnwatch = null;
+
+// ---- Node drag state ----
+let mmDragNodeId = null;
+let mmDragStartMouse = null;
+let mmDragStartNodePos = null;
+let mmDragActive = false;
+
+function mmAdminNodeDragStart(nodeId, event) {
+  event.stopPropagation();
+  if (event.type === 'touchstart') event.preventDefault();
+  mmDragNodeId = nodeId;
+  mmDragActive = false;
+  mmAdminSelected = null; // clear selection while dragging
+  const ev = event.touches ? event.touches[0] : event;
+  mmDragStartMouse = { x: ev.clientX, y: ev.clientY };
+  const node = mmAdminNodes.find(n => n.id === nodeId);
+  if (node) mmDragStartNodePos = { x: node.x || MM_W/2, y: node.y || MM_H/2 };
+}
+
+function mmClientToSVGCoord(clientX, clientY) {
+  const svg = document.querySelector('#mmAdminSvgWrap svg');
+  if (!svg) return { x: clientX, y: clientY };
+  const r = svg.getBoundingClientRect();
+  const vb = (svg.getAttribute('viewBox') || `0 0 ${MM_W} ${MM_H}`).split(' ').map(Number);
+  return {
+    x: vb[0] + (clientX - r.left) / r.width * vb[2],
+    y: vb[1] + (clientY - r.top) / r.height * vb[3]
+  };
+}
+
+function mmAdminDragMove(clientX, clientY) {
+  if (!mmDragNodeId || !mmDragStartMouse || !mmDragStartNodePos) return;
+  const dx = clientX - mmDragStartMouse.x;
+  const dy = clientY - mmDragStartMouse.y;
+  if (Math.hypot(dx, dy) < 8) return;
+  mmDragActive = true;
+  const startSVG = mmClientToSVGCoord(mmDragStartMouse.x, mmDragStartMouse.y);
+  const curSVG = mmClientToSVGCoord(clientX, clientY);
+  const node = mmAdminNodes.find(n => n.id === mmDragNodeId);
+  if (node) {
+    node.x = Math.round(mmDragStartNodePos.x + (curSVG.x - startSVG.x));
+    node.y = Math.round(mmDragStartNodePos.y + (curSVG.y - startSVG.y));
+    node.x = Math.max(100, Math.min(MM_W - 100, node.x));
+    node.y = Math.max(45,  Math.min(MM_H - 45,  node.y));
+    mmAdminRenderCanvas();
+  }
+}
+
+async function mmAdminDragEnd() {
+  if (!mmDragNodeId) return;
+  if (mmDragActive) {
+    const node = mmAdminNodes.find(n => n.id === mmDragNodeId);
+    if (node) await DB.update('mindmap_nodes', mmDragNodeId, { x: node.x, y: node.y });
+  }
+  // Small delay so click handler fires before we clear drag state
+  setTimeout(() => {
+    mmDragNodeId = null; mmDragStartMouse = null;
+    mmDragStartNodePos = null; mmDragActive = false;
+  }, 20);
+}
+
+document.addEventListener('mousemove', e => { if (mmDragNodeId) mmAdminDragMove(e.clientX, e.clientY); });
+document.addEventListener('mouseup', () => { if (mmDragNodeId) mmAdminDragEnd(); });
+document.addEventListener('touchmove', e => {
+  if (mmDragNodeId && e.touches[0]) { e.preventDefault(); mmAdminDragMove(e.touches[0].clientX, e.touches[0].clientY); }
+}, { passive: false });
+document.addEventListener('touchend', () => { if (mmDragNodeId) mmAdminDragEnd(); });
+
+function selectMmColor(color) {
+  document.querySelectorAll('[data-mm-color]').forEach(el => {
+    el.style.border = el.dataset.mmColor === color ? '2px solid #fff' : '2px solid transparent';
+  });
+  const inp = document.getElementById('mmNodeColor');
+  if (inp) inp.value = color;
+}
+
+function loadMindmap() {
+  // Start realtime listener once — auto-updates canvas on any Firestore change
+  if (mmAdminUnwatch) return;
+  mmAdminUnwatch = DB.watchMindmapNodes(nodes => {
+    mmAdminNodes = nodes;
+    mmAdminRenderCanvas();
+  });
+}
+
+function mmAdminRenderCanvas() {
+  mmRenderAdmin('mmAdminSvgWrap', mmAdminNodes, mmAdminSelected);
+  mmAdminRenderDailyView();
+}
+
+function mmAdminRenderDailyView() {
+  mmRender('adminDailyMmWrap', mmAdminNodes, new Set(), false);
+}
+
+function mmAdminFit() {
+  const wrap = document.getElementById('mmAdminSvgWrap');
+  if (wrap && wrap._mmFit) wrap._mmFit();
+}
+
+// Show context-aware floating popup near click point
+function mmAdminShowPopup(type, nodeId, event) {
+  const pop = document.getElementById('mmAdminPop');
+  if (!pop) return;
+
+  const node = nodeId ? mmAdminNodes.find(n => n.id === nodeId) : null;
+  const name = node ? (node.emoji ? node.emoji + ' ' : '') + node.label : '🕸 Daily Work';
+  const col = type === 'root' ? '#00e676' : '#0f0';
+
+  if (type === 'root') {
+    pop.innerHTML = `
+      <span style="color:#00e676;font-size:11px;font-weight:bold;margin-right:6px">🕸 Daily Work</span>
+      <button class="btn btn-sm btn-primary" onclick="mmAdminDeselect();modal('mmAddNode',{})">+ Node</button>
+      <button class="btn btn-sm" style="color:#444;border-color:#222" onclick="mmAdminDeselect()">✕</button>`;
+  } else {
+    // branch or task — both can have children
+    pop.innerHTML = `
+      <span style="color:${col};font-size:11px;font-weight:bold;margin-right:4px">${name}</span>
+      <button class="btn btn-sm" onclick="mmAdminEditSelected()">✎ Edit</button>
+      <button class="btn btn-sm btn-primary" onclick="mmAdminAddChildToSelected()">+ Child</button>
+      <button class="btn btn-sm" style="border-color:#f55;color:#f55" onclick="mmAdminDeleteSelected()">✕ Del</button>
+      <button class="btn btn-sm" style="color:#444;border-color:#222" onclick="mmAdminDeselect()">✕</button>`;
+  }
+
+  pop.style.display = 'flex';
+  pop.style.left = Math.min(event.clientX - 30, window.innerWidth - 320) + 'px';
+  pop.style.top = Math.min(event.clientY + 16, window.innerHeight - 60) + 'px';
+}
+
+// Called from SVG root onclick — add first branch
+function mmAdminClickRoot(event) {
+  if (mmDragActive) return;
+  event && event.stopPropagation();
+  mmAdminSelected = null;
+  mmAdminShowPopup('root', null, event);
+}
+
+// Called from SVG node onclick — shows context-aware action popup
+function mmAdminClickNode(nodeId, event) {
+  if (mmDragActive) return;
+  event && event.stopPropagation();
+  mmAdminSelected = nodeId;
+  const node = mmAdminNodes.find(n => n.id === nodeId);
+  if (!node) return;
+  mmAdminShowPopup(node.nodeType, nodeId, event);
+  mmAdminRenderCanvas(); // update selection ring
+}
+
+function mmAdminDeselect() {
+  mmAdminSelected = null;
+  const pop = document.getElementById('mmAdminPop');
+  if (pop) pop.style.display = 'none';
+  mmAdminRenderCanvas();
+}
+
+async function mmAdminEditSelected() {
+  if (!mmAdminSelected) return;
+  const pop = document.getElementById('mmAdminPop');
+  if (pop) pop.style.display = 'none';
+  const node = mmAdminNodes.find(n => n.id === mmAdminSelected);
+  if (!node) return;
+  modal('mmAddNode', { editId: node.id, label: node.label, tag: node.tag || node.emoji || '',
+    description: node.description || '', color: node.color, parentId: node.parentId });
+}
+
+function mmAdminAddChildToSelected() {
+  if (!mmAdminSelected) return;
+  const pop = document.getElementById('mmAdminPop');
+  if (pop) pop.style.display = 'none';
+  modal('mmAddNode', { parentId: mmAdminSelected });
+}
+
+async function mmAdminDeleteSelected() {
+  if (!mmAdminSelected) return;
+  const pop = document.getElementById('mmAdminPop');
+  if (pop) pop.style.display = 'none';
+  if (!await confirmDialog('Smazat tento uzel? Podúkoly budou také smazány.')) return;
+  const children = mmAdminNodes.filter(n => n.parentId === mmAdminSelected);
+  await Promise.all(children.map(c => DB.delete('mindmap_nodes', c.id)));
+  await DB.delete('mindmap_nodes', mmAdminSelected);
+  mmAdminSelected = null;
+  toast('Smazáno', 'success');
+  loadMindmap();
+}
+
+async function saveMmNode() {
+  const label = document.getElementById('mmNodeLabel')?.value.trim();
+  if (!label) return toast('Enter a name', 'error');
+  const tag = document.getElementById('mmNodeTag')?.value.trim() || '';
+  const description = document.getElementById('mmNodeDesc')?.value.trim() || '';
+  const color = document.getElementById('mmNodeColor')?.value || null;
+  const parentId = document.getElementById('mmNodeParentId')?.value || null;
+  const editId = document.getElementById('mmNodeEditId')?.value || null;
+
+  if (editId) {
+    await DB.update('mindmap_nodes', editId, { label, tag, description, color });
+    toast('Updated', 'success');
+  } else {
+    const siblings = mmAdminNodes.filter(n =>
+      parentId ? n.parentId === parentId : !n.parentId
+    );
+    await DB.add('mindmap_nodes', {
+      nodeType: parentId ? 'task' : 'branch',
+      label, tag, description, color,
+      parentId: parentId || null,
+      order: siblings.length
+    });
+    toast('Added', 'success');
+  }
+  closeModal();
+  // onSnapshot listener updates canvas automatically
 }
 
 // ============================================

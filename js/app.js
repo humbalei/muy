@@ -93,8 +93,32 @@ document.querySelectorAll('.tab').forEach(tab => {
     const section = parent.closest('.section');
     section.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     document.getElementById(tab.dataset.t).classList.add('active');
+    if (tab.dataset.t === 't-mindmap') {
+      openMindmap();
+    }
   };
 });
+
+function openMindmap() {
+  const overlay = document.getElementById('mmOverlay');
+  if (!overlay) return;
+  overlay.style.display = 'flex';
+  loadMindmap();
+  // Fit after overlay is visible
+  setTimeout(() => {
+    const wrap = document.getElementById('mmSvgWrap');
+    if (wrap && wrap._mmFit) wrap._mmFit();
+  }, 80);
+}
+
+function closeMindmap() {
+  const overlay = document.getElementById('mmOverlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function showMindmapTab() {
+  openMindmap();
+}
 
 function logout() {
   DB.logout();
@@ -124,6 +148,101 @@ let curDate = new Date().toISOString().split('T')[0];
 let calendarDate = new Date();
 document.getElementById('curDate').value = curDate;
 
+// ============================================
+// DAILY MINDMAP — realtime via Firestore onSnapshot
+// ============================================
+let mmDate = new Date().toISOString().split('T')[0];
+let mmNodes = [];
+let mmDoneSet = new Set();
+let mmUnwatchNodes = null;
+
+function mmChgDate(d) {
+  const dt = new Date(mmDate);
+  dt.setDate(dt.getDate() + d);
+  mmDate = dt.toISOString().split('T')[0];
+  mmRefreshDone();
+}
+
+function mmGoToday() {
+  mmDate = new Date().toISOString().split('T')[0];
+  mmRefreshDone();
+}
+
+function mmUpdateDateLabel() {
+  const label = document.getElementById('mmDateLabel');
+  if (!label) return;
+  const d = new Date(mmDate + 'T12:00:00');
+  const today = new Date().toISOString().split('T')[0];
+  label.textContent = mmDate === today
+    ? 'Today — ' + d.toLocaleDateString('en', { weekday: 'long', month: 'short', day: 'numeric' })
+    : d.toLocaleDateString('en', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function mmUpdateDisplay() {
+  mmUpdateDateLabel();
+  mmRender('mmSvgWrap', mmNodes, mmDoneSet, true);
+  const taskNodes = mmNodes.filter(n => n.nodeType === 'task');
+  const doneTasks = taskNodes.filter(t => mmDoneSet.has(t.id));
+  const pct = taskNodes.length ? Math.round((doneTasks.length / taskNodes.length) * 100) : 0;
+  const fill = document.getElementById('mmProgressFill');
+  const lbl = document.getElementById('mmProgressLabel');
+  if (fill) fill.style.width = pct + '%';
+  if (lbl) lbl.textContent = `${doneTasks.length}/${taskNodes.length}`;
+  // Also update tab preview
+  const tabProg = document.getElementById('mmTabProgress');
+  if (tabProg) tabProg.textContent = taskNodes.length
+    ? `${doneTasks.length} / ${taskNodes.length} hotovo (${pct}%)`
+    : `${mmNodes.length} uzlů v mapě`;
+}
+
+async function mmRefreshDone() {
+  try {
+    const recs = await DB.getMindmapDone(user.id, mmDate);
+    mmDoneSet = new Set(recs.filter(r => r.done).map(r => r.nodeId));
+    mmUpdateDisplay();
+  } catch(e) {
+    console.error('Mindmap done load error:', e);
+  }
+}
+
+function loadMindmap() {
+  // Start realtime Firestore listener once per session
+  if (!mmUnwatchNodes) {
+    mmUnwatchNodes = DB.watchMindmapNodes(nodes => {
+      mmNodes = nodes;
+      mmUpdateDisplay();
+    });
+  }
+  mmRefreshDone();
+}
+
+// Called from SVG onclick — toggles task done/undone instantly
+async function mmNodeClick(nodeId, event) {
+  event && event.stopPropagation();
+  const node = mmNodes.find(n => n.id === nodeId);
+  if (!node) return;
+
+  const newDone = !mmDoneSet.has(nodeId);
+
+  // Update local state + re-render immediately (no waiting for DB)
+  if (newDone) mmDoneSet.add(nodeId);
+  else mmDoneSet.delete(nodeId);
+  mmUpdateDisplay();
+
+  // Persist to Firestore
+  await DB.setMindmapDone(user.id, mmDate, nodeId, newDone);
+
+  // Show guide panel when marking as done
+  if (newDone && node.description) {
+    const panel = document.getElementById('mmGuidePanel');
+    if (panel) {
+      document.getElementById('mmGuidePanelTitle').textContent = (node.emoji ? node.emoji + ' ' : '') + node.label;
+      document.getElementById('mmGuidePanelBody').textContent = node.description;
+      panel.style.display = 'block';
+    }
+  }
+}
+
 function chgDate(d) {
   const dt = new Date(curDate);
   dt.setDate(dt.getDate() + d);
@@ -139,9 +258,10 @@ function goToday() {
 }
 
 async function loadDaily() {
-  await loadCalendar();
-  await loadDayDetail();
-  await loadPayroll();
+  loadMindmap();
+  loadCalendar();
+  loadDayDetail();
+  loadPayroll();
 }
 
 // --- DAY DETAIL ---

@@ -14,7 +14,7 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="apple-touch-icon" href="icon-180x180.png">
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="css/style.css?v=1019">
+  <link rel="stylesheet" href="css/style.css?v=1020">
 </head>
 <body>
   <!-- TOP BAR -->
@@ -43,12 +43,13 @@
     <!-- ==================== DAILY ==================== -->
     <div id="daily" class="section active">
       <div class="section-title">
-        <span>Work Calendar</span>
+        <span>Daily Tasks</span>
       </div>
 
       <div class="tabs">
         <div class="tab active" data-t="t-calendar">Calendar</div>
         <div class="tab" data-t="t-day">Day Detail</div>
+        <div class="tab" data-t="t-mindmap">🕸 Day Mindmap</div>
         <div class="tab" data-t="t-payroll">Payroll</div>
       </div>
 
@@ -60,6 +61,7 @@
               <button class="btn btn-sm" onclick="chgMonth(-1)">&lt;</button>
               <span id="calendarMonth">January 2024</span>
               <button class="btn btn-sm" onclick="chgMonth(1)">&gt;</button>
+              <button class="btn btn-sm btn-primary" onclick="showMindmapTab()" style="margin-left:auto">🕸 Mindmap</button>
             </div>
             <div class="box-body">
               <div class="calendar-legend" style="display:flex;gap:15px;margin-bottom:10px;font-size:10px">
@@ -116,6 +118,7 @@
               <button class="btn btn-sm" onclick="goToday()">Today</button>
             </div>
             <div id="dayStatus"></div>
+            <button class="btn btn-sm btn-primary" onclick="showMindmapTab()">🕸 Mindmap</button>
           </div>
           <div class="box-body">
             <div class="grid grid-3" style="margin-bottom:15px">
@@ -178,6 +181,18 @@
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Day Mindmap Tab -->
+      <div id="t-mindmap" class="tab-content">
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;gap:16px;text-align:center">
+          <div style="font-size:56px;line-height:1">🕸</div>
+          <div id="mmTabProgress" style="color:#0f0;font-size:15px;font-weight:bold">-</div>
+          <button class="btn btn-primary" style="font-size:15px;padding:14px 36px" onclick="openMindmap()">
+            Otevřít Mindmap na celou obrazovku
+          </button>
+          <div style="color:#444;font-size:11px">Pinch zoom • Pan • Klikni na uzel pro detail</div>
         </div>
       </div>
 
@@ -520,8 +535,9 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="js/config.js?v=1018"></script>
   <script src="js/config.local.js?v=1018"></script>
-  <script src="js/db.js?v=1018"></script>
-  <script src="js/app.js?v=1021"></script>
+  <script src="js/db.js?v=1019"></script>
+  <script src="js/mindmap.js?v=6"></script>
+  <script src="js/app.js?v=1027"></script>
 
   <!-- PWA Service Worker Registration - DISABLED for stability -->
   <script>
@@ -535,5 +551,41 @@
       });
     }
   </script>
+  <!-- ==================== MINDMAP FULLSCREEN OVERLAY ==================== -->
+  <div id="mmOverlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;background:#000;flex-direction:column">
+    <!-- Top bar -->
+    <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#090909;border-bottom:1px solid #0f0;flex-shrink:0">
+      <button class="btn btn-sm" onclick="mmChgDate(-1)" style="padding:6px 10px">&lt;</button>
+      <span id="mmDateLabel" style="flex:1;color:#0f0;font-weight:bold;text-align:center;font-size:14px"></span>
+      <button class="btn btn-sm" onclick="mmChgDate(1)" style="padding:6px 10px">&gt;</button>
+      <button class="btn btn-sm" onclick="mmGoToday()">Today</button>
+      <button class="btn btn-sm" onclick="document.getElementById('mmSvgWrap')._mmFit && document.getElementById('mmSvgWrap')._mmFit()" title="Fit">⊞</button>
+      <button onclick="closeMindmap()" style="background:#1a0000;border:1px solid #f55;color:#f55;padding:6px 12px;cursor:pointer;font-family:'Courier New',monospace;font-size:13px;border-radius:2px">✕ Zavřít</button>
+    </div>
+    <!-- Progress bar -->
+    <div class="mindmap-progress" style="flex-shrink:0;padding:6px 15px">
+      <span>Progress</span>
+      <div class="mindmap-progress-track">
+        <div class="mindmap-progress-fill" id="mmProgressFill" style="width:0%"></div>
+      </div>
+      <span class="mindmap-progress-label" id="mmProgressLabel">0/0</span>
+    </div>
+    <!-- Canvas — fills all remaining height -->
+    <div id="mmSvgWrap" style="flex:1;background:#000;overflow:hidden;min-height:0;touch-action:none">
+      <svg width="100%" height="100%" style="background:#000;display:block;width:100%;height:100%">
+        <text x="50%" y="50%" text-anchor="middle" fill="#333" font-size="14"
+          font-family="'Courier New',monospace">Loading mindmap...</text>
+      </svg>
+    </div>
+    <!-- Node guide (tap detail) -->
+    <div id="mmGuidePanel" style="display:none;flex-shrink:0;max-height:28vh;overflow-y:auto;padding:10px;border-top:1px solid #1a1a1a">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <span id="mmGuidePanelTitle" style="color:#0f0;font-weight:bold;font-size:13px"></span>
+        <button onclick="document.getElementById('mmGuidePanel').style.display='none'" style="background:none;border:none;color:#555;cursor:pointer;font-size:16px">✕</button>
+      </div>
+      <div id="mmGuidePanelBody" style="font-size:13px;color:#ccc;line-height:1.7;white-space:pre-wrap"></div>
+    </div>
+  </div>
+
 </body>
 </html>

@@ -22,7 +22,7 @@
   <link rel="apple-touch-icon" sizes="167x167" href="icon-167x167.png">
   <link rel="manifest" href="manifest.json">
 
-  <link rel="stylesheet" href="css/style.css?v=1010">
+  <link rel="stylesheet" href="css/style.css?v=1020">
 </head>
 <body>
   <!-- TOP BAR -->
@@ -54,10 +54,24 @@
     <!-- ==================== DAILY ==================== -->
     <div id="daily" class="section active">
       <div class="section-title">
-        <span>Work Calendar</span>
+        <span>Daily Tasks</span>
         <select id="assistantSelect" onchange="switchAssistant(this.value)" style="background:#111;border:1px solid #333;color:#0f0;padding:5px 10px;font-size:13px;font-family:'Courier New',monospace;border-radius:4px">
           <option value="">Loading...</option>
         </select>
+      </div>
+
+      <!-- MINDMAP — always visible at top of daily -->
+      <div class="mindmap-wrap" style="margin-bottom:16px">
+        <div class="mindmap-nav">
+          <span style="flex:1;color:#0f0;font-weight:bold;text-align:center;font-size:13px">🕸 Mindmap</span>
+          <button class="btn btn-sm" onclick="document.getElementById('adminDailyMmWrap')._mmFit && document.getElementById('adminDailyMmWrap')._mmFit()" title="Fit">⊞</button>
+        </div>
+        <div id="adminDailyMmWrap" style="height:520px;background:#000;overflow:hidden;border:1px solid #1a1a1a;border-radius:4px">
+          <svg width="100%" height="100%" style="background:#000;display:block">
+            <text x="50%" y="50%" text-anchor="middle" fill="#333" font-size="14"
+              font-family="'Courier New',monospace">Loading mindmap...</text>
+          </svg>
+        </div>
       </div>
 
       <div class="tabs">
@@ -819,6 +833,7 @@
       <div class="tabs">
         <div class="tab active" data-t="s-users">👥 Users</div>
         <div class="tab" data-t="s-tasks">Task Presets</div>
+        <div class="tab" data-t="s-mindmap">🕸 Mindmap</div>
         <div class="tab" data-t="s-rate">Hourly Rate</div>
         <div class="tab" data-t="s-sections">Sections</div>
       </div>
@@ -873,6 +888,22 @@
           <div class="box-header">Daily Task Presets <button class="btn btn-sm btn-primary" onclick="modal('taskPreset')">Add Task</button></div>
           <div class="box-body" id="presetList"></div>
         </div>
+      </div>
+
+      <!-- Mindmap Visual Builder -->
+      <div id="s-mindmap" class="tab-content">
+        <!-- Toolbar -->
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#050505;border:1px solid #111;border-radius:4px;margin-bottom:8px">
+          <span style="color:#0f0;font-weight:bold;font-size:13px">🕸 Daily Mindmap</span>
+          <span style="color:#444;font-size:10px;flex:1">Tap DAILY WORK → add branch • Tap branch → add task/edit/delete</span>
+          <button class="btn btn-sm" onclick="mmAdminFit()">Fit ⊞</button>
+        </div>
+
+        <!-- Floating action popup — content built dynamically by mmAdminShowPopup() -->
+        <div id="mmAdminPop" style="display:none;position:fixed;z-index:9000;background:#111;border:1px solid #0f0;border-radius:4px;padding:6px 8px;gap:6px;align-items:center;box-shadow:0 0 20px rgba(0,255,0,.2)"></div>
+
+        <!-- Canvas -->
+        <div id="mmAdminSvgWrap" style="height:580px;background:#000;overflow:hidden;border:1px solid #111;border-radius:4px;position:relative"></div>
       </div>
 
       <!-- Hourly Rate -->
@@ -939,10 +970,11 @@
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
   <script src="js/config.js?v=1009"></script>
   <script src="js/config.local.js?v=1009"></script>
-  <script src="js/db.js?v=1009"></script>
+  <script src="js/db.js?v=1010"></script>
   <script src="js/video-spoof.js?v=1009"></script>
   <script src="js/photo-spoof.js?v=1010"></script>
-  <script src="js/admin.js?v=1025"></script>
+  <script src="js/mindmap.js?v=6"></script>
+  <script src="js/admin.js?v=1032"></script>
 
   <!-- PWA Service Worker Registration - DISABLED for stability -->
   <script>

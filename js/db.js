@@ -240,5 +240,42 @@ const DB = {
 
   async saveSetting(key, data) {
     return this.set('settings', key, data);
+  },
+
+  async getMindmapNodes() {
+    return this.getAll('mindmap_nodes', [], 'order', 'asc');
+  },
+
+  async getMindmapDone(userId, date) {
+    return this.getAll('mindmap_done', [
+      { field: 'userId', value: userId },
+      { field: 'date', value: date }
+    ]);
+  },
+
+  async setMindmapDone(userId, date, nodeId, done) {
+    const id = `${userId}_${date}_${nodeId}`;
+    return this.set('mindmap_done', id, { userId, date, nodeId, done });
+  },
+
+  // Realtime listener — returns unsubscribe function
+  watchMindmapNodes(callback) {
+    try {
+      return this.db.collection('mindmap_nodes')
+        .orderBy('order', 'asc')
+        .onSnapshot(snap => {
+          const nodes = [];
+          snap.forEach(doc => nodes.push({ id: doc.id, ...doc.data() }));
+          callback(nodes);
+        }, err => {
+          console.error('mindmap watch error:', err);
+          // Fallback to one-time fetch on error (e.g. missing index)
+          this.getMindmapNodes().then(callback);
+        });
+    } catch(e) {
+      console.error('mindmap watch setup error:', e);
+      this.getMindmapNodes().then(callback);
+      return () => {};
+    }
   }
 };
