@@ -81,10 +81,11 @@ function mmAutoLayout(nodes) {
 // ============================================
 function mmCurve(x1, y1, x2, y2, color, active) {
   const dx = (x2 - x1) * 0.5;
-  const op = active ? 0.95 : 0.22;
+  const op = active ? 0.95 : 0.55;
+  const sw = active ? 4 : 2.5;
   const fw = active ? 'filter="url(#mmGS)"' : '';
   return `<path d="M${x1},${y1} C${x1+dx},${y1} ${x2-dx},${y2} ${x2},${y2}"
-    fill="none" stroke="${color}" stroke-width="3" opacity="${op}"
+    fill="none" stroke="${color}" stroke-width="${sw}" opacity="${op}"
     stroke-linecap="round" ${fw}/>`;
 }
 
@@ -101,19 +102,19 @@ function mmNode(cx, cy, label, color, depth, nid, done, clickable, hasDesc, clic
 
   const x = cx - W/2, y = cy - H/2;
 
-  let fill, stroke, tc, sw;
+  let fill, stroke, tc, sw, fillOp;
   if (done) {
-    fill = color; stroke = color; tc = '#000'; sw = 2;
+    fill = color; fillOp = 1; stroke = color; tc = '#000'; sw = 2;
   } else if (depth === 0) {
-    fill = '#001800'; stroke = color; tc = color; sw = 3;
+    fill = '#001800'; fillOp = 1; stroke = color; tc = color; sw = 3;
   } else if (depth === 1) {
-    fill = '#060606'; stroke = color; tc = color; sw = 2.5;
+    fill = color; fillOp = 0.18; stroke = color; tc = color; sw = 3;
   } else {
-    fill = '#050505'; stroke = color + 'aa'; tc = color; sw = 2;
+    fill = color; fillOp = 0.12; stroke = color; tc = color; sw = 2;
   }
 
   const glow = done ? 'filter="url(#mmG)"' : depth <= 1 ? 'filter="url(#mmGS)"' : '';
-  const op = depth === 0 ? 1 : 0.93;
+  const op = 1;
 
   // Split label into max 2 lines
   const maxCh = depth === 0 ? 10 : 14;
@@ -163,7 +164,7 @@ function mmNode(cx, cy, label, color, depth, nid, done, clickable, hasDesc, clic
 
   return `<g style="cursor:${cur}" ${oc} ${od} ${glow} opacity="${op}">
     <rect x="${x}" y="${y}" width="${W}" height="${H}" rx="${rx}" ry="${rx}"
-      fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>
+      fill="${fill}" fill-opacity="${fillOp}" stroke="${stroke}" stroke-width="${sw}"/>
     ${done ? `<rect x="${x+2}" y="${y+2}" width="${W-4}" height="${H-4}"
       rx="${rx-1}" ry="${rx-1}" fill="none" stroke="#00000030" stroke-width="1"/>` : ''}
     ${txt}${check}${dot}
