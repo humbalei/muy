@@ -48,6 +48,13 @@ document.querySelectorAll('.tab').forEach(tab => {
     section.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     document.getElementById(tab.dataset.t).classList.add('active');
     if (tab.dataset.t === 's-mindmap') loadMindmap();
+    if (tab.dataset.t === 't-mindmap-admin') {
+      loadMindmap();
+      setTimeout(() => {
+        const wrap = document.getElementById('adminDailyMmWrap');
+        if (wrap && wrap._mmFit) wrap._mmFit();
+      }, 80);
+    }
   };
 });
 
@@ -7297,11 +7304,10 @@ function loadMindmap() {
 
 function mmAdminRenderCanvas() {
   mmRenderAdmin('mmAdminSvgWrap', mmAdminNodes, mmAdminSelected);
-  mmAdminRenderDailyView();
-}
-
-function mmAdminRenderDailyView() {
-  mmRender('adminDailyMmWrap', mmAdminNodes, new Set(), false);
+  // Also update daily view if visible
+  if (document.getElementById('t-mindmap-admin')?.classList.contains('active')) {
+    mmRender('adminDailyMmWrap', mmAdminNodes, new Set(), false);
+  }
 }
 
 function mmAdminFit() {

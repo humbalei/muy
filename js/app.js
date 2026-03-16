@@ -94,30 +94,18 @@ document.querySelectorAll('.tab').forEach(tab => {
     section.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     document.getElementById(tab.dataset.t).classList.add('active');
     if (tab.dataset.t === 't-mindmap') {
-      openMindmap();
+      loadMindmap();
+      setTimeout(() => {
+        const wrap = document.getElementById('mmSvgWrap');
+        if (wrap && wrap._mmFit) wrap._mmFit();
+      }, 80);
     }
   };
 });
 
-function openMindmap() {
-  const overlay = document.getElementById('mmOverlay');
-  if (!overlay) return;
-  overlay.style.display = 'flex';
-  loadMindmap();
-  // Fit after overlay is visible
-  setTimeout(() => {
-    const wrap = document.getElementById('mmSvgWrap');
-    if (wrap && wrap._mmFit) wrap._mmFit();
-  }, 80);
-}
-
-function closeMindmap() {
-  const overlay = document.getElementById('mmOverlay');
-  if (overlay) overlay.style.display = 'none';
-}
-
 function showMindmapTab() {
-  openMindmap();
+  const tab = document.querySelector('#daily .tab[data-t="t-mindmap"]');
+  if (tab) tab.click();
 }
 
 function logout() {

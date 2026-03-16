@@ -60,24 +60,26 @@
         </select>
       </div>
 
-      <!-- MINDMAP — always visible at top of daily -->
-      <div class="mindmap-wrap" style="margin-bottom:16px">
-        <div class="mindmap-nav">
-          <span style="flex:1;color:#0f0;font-weight:bold;text-align:center;font-size:13px">🕸 Mindmap</span>
-          <button class="btn btn-sm" onclick="document.getElementById('adminDailyMmWrap')._mmFit && document.getElementById('adminDailyMmWrap')._mmFit()" title="Fit">⊞</button>
-        </div>
-        <div id="adminDailyMmWrap" style="height:520px;background:#000;overflow:hidden;border:1px solid #1a1a1a;border-radius:4px">
-          <svg width="100%" height="100%" style="background:#000;display:block">
-            <text x="50%" y="50%" text-anchor="middle" fill="#333" font-size="14"
-              font-family="'Courier New',monospace">Loading mindmap...</text>
-          </svg>
-        </div>
-      </div>
-
       <div class="tabs">
         <div class="tab active" data-t="t-calendar">Calendar</div>
         <div class="tab" data-t="t-day">Day Detail</div>
+        <div class="tab" data-t="t-mindmap-admin">🕸 Day Mindmap</div>
         <div class="tab" data-t="t-payroll">Payroll</div>
+      </div>
+
+      <!-- Day Mindmap Tab (admin read-only view) -->
+      <div id="t-mindmap-admin" class="tab-content">
+        <div class="mindmap-wrap">
+          <div class="mindmap-nav">
+            <span style="flex:1;color:#0f0;font-weight:bold;text-align:center;font-size:14px">🕸 Mindmap Overview</span>
+            <button class="btn btn-sm" onclick="document.getElementById('adminDailyMmWrap')._mmFit && document.getElementById('adminDailyMmWrap')._mmFit()">⊞ Fit</button>
+          </div>
+          <div id="adminDailyMmWrap" style="height:65vh;min-height:500px;background:#000;overflow:hidden;touch-action:none">
+            <svg width="100%" height="100%" viewBox="0 0 1000 680" style="background:#000;display:block">
+              <text x="500" y="340" text-anchor="middle" fill="#333" font-size="14" font-family="'Courier New',monospace">Loading...</text>
+            </svg>
+          </div>
+        </div>
       </div>
 
       <!-- Calendar Tab -->
@@ -974,7 +976,7 @@
   <script src="js/video-spoof.js?v=1009"></script>
   <script src="js/photo-spoof.js?v=1010"></script>
   <script src="js/mindmap.js?v=7"></script>
-  <script src="js/admin.js?v=1032"></script>
+  <script src="js/admin.js?v=1033"></script>
 
   <!-- PWA Service Worker Registration - DISABLED for stability -->
   <script>
